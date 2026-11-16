@@ -21,11 +21,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Generate Android project & build signed APK
         run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
           mkdir -p android-app/app/src/main/java/com/manio/malazantree
           mkdir -p android-app/app/src/main/res/drawable
           mkdir -p android-app/app/src/main/res/mipmap-xxxhdpi
