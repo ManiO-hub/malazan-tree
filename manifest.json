@@ -1,0 +1,19 @@
+{
+  "name": "Arbre Malazan — Le Livre des Martyrs",
+  "short_name": "Malazan Tree",
+  "description": "Arbre interactif des personnages, tribus et factions du Livre des Martyrs",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111318",
+  "theme_color": "#c0392b",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
