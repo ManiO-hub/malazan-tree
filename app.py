@@ -580,6 +580,24 @@ def lookup_character_online(query_name, existing_characters):
                 book_nums.append(num)
         detected_tomes = tomes.format_tomes(book_nums)
 
+    # Fetch thumbnail portrait from Malazan Wiki
+    portrait_url = ""
+    try:
+        img_api = (
+            "https://malazan.fandom.com/api.php?action=query&titles="
+            + urllib.parse.quote(chosen_title)
+            + "&prop=pageimages&pithumbsize=320&format=json&redirects=1"
+        )
+        req_img = urllib.request.Request(img_api, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req_img, timeout=6) as r_img:
+            img_data = json.loads(r_img.read().decode("utf-8"))
+            for pg in img_data.get("query", {}).get("pages", {}).values():
+                portrait_url = pg.get("thumbnail", {}).get("source", "")
+                if portrait_url:
+                    break
+    except Exception:
+        pass
+
     return {
         "character": {
             "id": slugify(vf_name),
@@ -594,6 +612,7 @@ def lookup_character_online(query_name, existing_characters):
             "role": role,
             "statut": statut,
             "tomes": detected_tomes,
+            "portrait": portrait_url,
             "resume": resume_fr or f"Personnage du Livre des Martyrs ({vo_name})."
         },
         "suggestedRelations": suggested_relations,
@@ -606,15 +625,50 @@ def load_database():
     wb = openpyxl.load_workbook(XLSX_PATH)
     ws_f = wb["Factions"]
     factions = {}
-    for r in range(2, ws_f.max_row + 1):
-        fid = str(ws_f.cell(r, 1).value or "").strip()
-        color = str(ws_f.cell(r, 3).value or "").strip()
-        if fid and color.startswith("#"):
-            factions[fid] = {
-                "label": str(ws_f.cell(r, 2).value or fid).strip(),
-                "color": color
-            }
-    # Ensure legacy faction keys used by characters are present
+    high_houses = []
+    warrens = []
+    titles_ref = []
+    section = "factions"
+
+    for r in range(1, ws_f.max_row + 1):
+        c1 = str(ws_f.cell(r, 1).value or "").strip()
+        c2 = str(ws_f.cell(r, 2).value or "").strip()
+        c3 = str(ws_f.cell(r, 3).value or "").strip()
+        c4 = str(ws_f.cell(r, 4).value or "").strip()
+        c5 = str(ws_f.cell(r, 5).value or "").strip()
+        c6 = str(ws_f.cell(r, 6).value or "").strip()
+        c7 = str(ws_f.cell(r, 7).value or "").strip()
+
+        if "HAUTES MAISONS" in c1:
+            section = "houses"
+            continue
+        elif "GARENNES AUTONOMES" in c1:
+            section = "warrens"
+            continue
+        elif "RÉFÉRENCE DES SIÈGES" in c1:
+            section = "titles"
+            continue
+        if not c1 or c1.startswith("ID") or c1.startswith("🏛️"):
+            continue
+
+        if section == "factions" and c3.startswith("#"):
+            factions[c1] = {"label": c2 or c1, "color": c3, "categorie": c4, "sphere": c5, "regime": c6, "desc": c7}
+        elif section == "houses" and c3.startswith("#"):
+            high_houses.append({
+                "id": c1, "nom": c2, "color": c3, "garenneAncestrale": c4,
+                "garennesDerivees": c5, "souverains": c6, "description": c7
+            })
+        elif section == "warrens" and c3.startswith("#"):
+            warrens.append({
+                "id": c1, "nom": c2, "color": c3, "systeme": c4,
+                "domaine": c5, "depositaire": c6, "description": c7
+            })
+        elif section == "titles" and c2:
+            titles_ref.append({
+                "titreVF": c1, "titreVO": c2, "institution": c3,
+                "attribut": c4, "representants": c5, "role": c6, "description": c7
+            })
+
     fallback_factions = {
         "wickan": ("Tribus Wickiennes", "#F39C12"),
         "ombre": ("Maison de l'Ombre", "#34495E"),
@@ -645,7 +699,8 @@ def load_database():
             "role": str(ws_p.cell(r, 10).value or "").strip(),
             "statut": str(ws_p.cell(r, 11).value or "").strip(),
             "resume": str(ws_p.cell(r, 12).value or "").strip(),
-            "tomes": str(ws_p.cell(r, 13).value or "").strip()
+            "tomes": str(ws_p.cell(r, 13).value or "").strip(),
+            "portrait": str(ws_p.cell(r, 14).value or "").strip()
         })
 
     ws_r = wb["Relation"]
@@ -664,7 +719,14 @@ def load_database():
                     "label": str(ws_r.cell(r, 4).value or "").strip()
                 })
 
-    return {"factions": factions, "personnages": personnages, "relations": relations}
+    return {
+        "factions": factions,
+        "highHouses": high_houses,
+        "warrens": warrens,
+        "titlesRef": titles_ref,
+        "personnages": personnages,
+        "relations": relations
+    }
 
 
 def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
@@ -698,7 +760,8 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
         char_data.get("role", ""),
         char_data.get("statut", ""),
         char_data.get("resume", ""),
-        char_data.get("tomes", "")
+        char_data.get("tomes", ""),
+        char_data.get("portrait", "")
     ]
     for c_idx, val in enumerate(cols, 1):
         cell = ws_p.cell(target_row, c_idx)
