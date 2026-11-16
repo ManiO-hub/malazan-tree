@@ -18,6 +18,7 @@ import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from copy import copy
 import openpyxl
+import tomes
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 XLSX_PATH = os.path.join(BASE_DIR, "malazan.xlsx")
@@ -570,6 +571,15 @@ def lookup_character_online(query_name, existing_characters):
         if len(suggested_relations) >= 6:
             break
 
+    detected_tomes = tomes.format_tomes(tomes.detect_tomes(vo_name, vf_name, chosen_title))
+    if not detected_tomes:
+        # Fallback: detect book names mentioned in wikitext
+        book_nums = []
+        for num, _, book_en in tomes.TOMES:
+            if f"[[{book_en}]]" in wikitext or f"|{book_en}]]" in wikitext:
+                book_nums.append(num)
+        detected_tomes = tomes.format_tomes(book_nums)
+
     return {
         "character": {
             "id": slugify(vf_name),
@@ -583,6 +593,7 @@ def lookup_character_online(query_name, existing_characters):
             "unite": unite,
             "role": role,
             "statut": statut,
+            "tomes": detected_tomes,
             "resume": resume_fr or f"Personnage du Livre des Martyrs ({vo_name})."
         },
         "suggestedRelations": suggested_relations,
@@ -596,12 +607,23 @@ def load_database():
     ws_f = wb["Factions"]
     factions = {}
     for r in range(2, ws_f.max_row + 1):
-        fid = ws_f.cell(r, 1).value
-        if fid:
-            factions[str(fid).strip()] = {
+        fid = str(ws_f.cell(r, 1).value or "").strip()
+        color = str(ws_f.cell(r, 3).value or "").strip()
+        if fid and color.startswith("#"):
+            factions[fid] = {
                 "label": str(ws_f.cell(r, 2).value or fid).strip(),
-                "color": str(ws_f.cell(r, 3).value or "#888888").strip()
+                "color": color
             }
+    # Ensure legacy faction keys used by characters are present
+    fallback_factions = {
+        "wickan": ("Tribus Wickiennes", "#F39C12"),
+        "ombre": ("Maison de l'Ombre", "#34495E"),
+        "chaines": ("Maison des Chaînes", "#8E44AD"),
+        "tlans": ("T'lan Imass", "#7F8C8D"),
+    }
+    for k, (lbl, col) in fallback_factions.items():
+        if k not in factions:
+            factions[k] = {"label": lbl, "color": col}
 
     ws_p = wb["Personnages"]
     personnages = []
@@ -622,7 +644,8 @@ def load_database():
             "unite": str(ws_p.cell(r, 9).value or "").strip(),
             "role": str(ws_p.cell(r, 10).value or "").strip(),
             "statut": str(ws_p.cell(r, 11).value or "").strip(),
-            "resume": str(ws_p.cell(r, 12).value or "").strip()
+            "resume": str(ws_p.cell(r, 12).value or "").strip(),
+            "tomes": str(ws_p.cell(r, 13).value or "").strip()
         })
 
     ws_r = wb["Relation"]
@@ -674,7 +697,8 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
         char_data.get("unite", ""),
         char_data.get("role", ""),
         char_data.get("statut", ""),
-        char_data.get("resume", "")
+        char_data.get("resume", ""),
+        char_data.get("tomes", "")
     ]
     for c_idx, val in enumerate(cols, 1):
         cell = ws_p.cell(target_row, c_idx)
