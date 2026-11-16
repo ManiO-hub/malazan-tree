@@ -1,0 +1,200 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Generate Android project & build signed APK
+        run: |
+          mkdir -p android-app/app/src/main/java/com/manio/malazantree
+          mkdir -p android-app/app/src/main/res/drawable
+          mkdir -p android-app/app/src/main/res/mipmap-xxxhdpi
+          mkdir -p android-app/app/src/main/assets
+
+          cp icon-512.png android-app/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          cp index.html android-app/app/src/main/assets/index.html
+
+          cat << 'EOF' > android-app/settings.gradle
+          rootProject.name = "MalazanTree"
+          include ':app'
+          EOF
+
+          cat << 'EOF' > android-app/build.gradle
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.2.2'
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+
+          cat << 'EOF' > android-app/app/build.gradle
+          apply plugin: 'com.android.application'
+
+          android {
+              namespace 'com.manio.malazantree'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId "com.manio.malazantree"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              signingConfigs {
+                  release {
+                      storeFile file("release.keystore")
+                      storePassword "malazanpass"
+                      keyAlias "malazan"
+                      keyPassword "malazanpass"
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
+              }
+          }
+          EOF
+
+          keytool -genkeypair -v \
+            -keystore android-app/app/release.keystore \
+            -alias malazan \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass malazanpass -keypass malazanpass \
+            -dname "CN=Manu Aubier, OU=Malazan, O=ManiO, L=Paris, S=IDF, C=FR"
+
+          cat << 'EOF' > android-app/app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="Arbre Malazan"
+                  android:usesCleartextTraffic="true"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:configChanges="orientation|screenSize|keyboardHidden">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > android-app/app/src/main/java/com/manio/malazantree/MainActivity.java
+          package com.manio.malazantree;
+
+          import android.app.Activity;
+          import android.net.ConnectivityManager;
+          import android.net.NetworkInfo;
+          import android.os.Bundle;
+          import android.view.Window;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import android.graphics.Color;
+
+          public class MainActivity extends Activity {
+              private WebView webView;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  requestWindowFeature(Window.FEATURE_NO_TITLE);
+                  getWindow().setStatusBarColor(Color.parseColor("#111318"));
+
+                  webView = new WebView(this);
+                  setContentView(webView);
+
+                  WebSettings settings = webView.getSettings();
+                  settings.setJavaScriptEnabled(true);
+                  settings.setDomStorageEnabled(true);
+                  settings.setDatabaseEnabled(true);
+                  settings.setAllowFileAccess(true);
+                  settings.setAllowContentAccess(true);
+                  settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+
+                  webView.setBackgroundColor(Color.parseColor("#111318"));
+                  webView.setWebChromeClient(new WebChromeClient());
+                  webView.setWebViewClient(new WebViewClient() {
+                      @Override
+                      public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                          view.loadUrl("file:///android_asset/index.html");
+                      }
+                  });
+
+                  ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+                  NetworkInfo ni = cm != null ? cm.getActiveNetworkInfo() : null;
+                  if (ni != null && ni.isConnected()) {
+                      webView.loadUrl("https://manio-hub.github.io/malazan-tree/?v=" + System.currentTimeMillis());
+                  } else {
+                      webView.loadUrl("file:///android_asset/index.html");
+                  }
+              }
+
+              @Override
+              public void onBackPressed() {
+                  if (webView != null && webView.canGoBack()) {
+                      webView.goBack();
+                  } else {
+                      super.onBackPressed();
+                  }
+              }
+          }
+          EOF
+
+          cd android-app
+          gradle assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../malazan-tree.apk
+
+      - name: Publish APK to GitHub Release (latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0-apk
+          name: "Application Android — Arbre Malazan (APK)"
+          body: "Téléchargez **malazan-tree.apk** sur votre téléphone Android pour installer l'application native Arbre Malazan."
+          files: malazan-tree.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
