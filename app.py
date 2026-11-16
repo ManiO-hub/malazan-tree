@@ -746,14 +746,6 @@ def sync_html_and_git_push(sync_drive=True):
                 )
                 with open(fpath, "w", encoding="utf-8") as f:
                     f.write(html)
-        if sync_drive:
-            try:
-                run_gdrive_cmd(
-                    ["mutate", "update", DRIVE_HTML_ID, HTML_PATH, "--mime-type", "text/html"],
-                    timeout=20
-                )
-            except Exception:
-                pass
         # Si le dossier est un dépôt git, commit + push en arrière-plan pour mettre à jour GitHub Pages
         if os.path.exists(os.path.join(BASE_DIR, ".git")):
             subprocess.Popen(
