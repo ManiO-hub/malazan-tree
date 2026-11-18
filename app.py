@@ -823,6 +823,21 @@ def load_database():
     }
 
 
+def char_identity_keys(cid="", nom="", nom_vo=""):
+    """Clés canoniques exactes (ID + alias séparés par '/') pour détecter les doublons sans faux positifs."""
+    keys = set()
+    if cid:
+        k = slugify(cid)
+        if len(k) >= 3:
+            keys.add(k)
+    for field in (nom, nom_vo):
+        for part in str(field or "").split("/"):
+            k = slugify(part)
+            if len(k) >= 3:
+                keys.add(k)
+    return keys
+
+
 def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
     if sync_drive:
         try:
@@ -833,8 +848,45 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
     ws_p = wb["Personnages"]
 
     cid = char_data["id"].strip()
+    incoming_keys = char_identity_keys(cid, char_data.get("nom", ""), char_data.get("nomVO", ""))
+
+    target_row = None
+    last_filled_row = 1
+    alias_row = None
+    alias_id = None
+
+    for r in range(2, ws_p.max_row + 1):
+        val = ws_p.cell(r, 1).value
+        if val:
+            last_filled_row = r
+            row_id = str(val).strip()
+            if row_id == cid:
+                target_row = r
+            elif alias_row is None and incoming_keys:
+                row_keys = char_identity_keys(
+                    row_id,
+                    str(ws_p.cell(r, 2).value or ""),
+                    str(ws_p.cell(r, 3).value or "")
+                )
+                if incoming_keys & row_keys:
+                    alias_row = r
+                    alias_id = row_id
+
+    is_merged_duplicate = False
+    if target_row is None and alias_row is not None:
+        target_row = alias_row
+        cid = alias_id
+        char_data["id"] = cid
+        is_merged_duplicate = True
+
+    if target_row is None:
+        target_row = last_filled_row + 1
+
+    existing_portrait = str(ws_p.cell(target_row, 20).value or "").strip() if target_row <= last_filled_row else ""
     p_url = (char_data.get("portrait") or "").strip()
-    if p_url.startswith("http"):
+    if is_merged_duplicate and existing_portrait.startswith("portraits/") and (not p_url or p_url.startswith("http")):
+        char_data["portrait"] = existing_portrait
+    elif p_url.startswith("http"):
         try:
             os.makedirs(os.path.join(BASE_DIR, "portraits"), exist_ok=True)
             local_rel = f"portraits/{cid}.webp"
@@ -848,18 +900,6 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
                     char_data["portrait"] = local_rel
         except Exception:
             pass
-    target_row = None
-    last_filled_row = 1
-    for r in range(2, ws_p.max_row + 1):
-        val = ws_p.cell(r, 1).value
-        if val:
-            last_filled_row = r
-            if str(val).strip() == cid:
-                target_row = r
-                break
-
-    if target_row is None:
-        target_row = last_filled_row + 1
 
     cols = [
         cid,
@@ -885,6 +925,10 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
     ]
     for c_idx, val in enumerate(cols, 1):
         cell = ws_p.cell(target_row, c_idx)
+        if is_merged_duplicate and c_idx >= 2 and not str(val or "").strip():
+            prev_val = str(cell.value or "").strip()
+            if prev_val:
+                val = cell.value
         cell.value = val
         ref_cell = ws_p.cell(max(2, last_filled_row), c_idx)
         for attr in ("font", "fill", "border", "alignment", "number_format"):
@@ -933,7 +977,7 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
         if rtype in ("Commandement", "Hiérarchie"):
             rtype = "Hiérarchie / Commandement"
         label = (rel.get("label") or rtype).strip()
-        if target_id and (cid, target_id, rtype) not in existing_rels:
+        if target_id and target_id != cid and (cid, target_id, rtype) not in existing_rels:
             last_r_row += 1
             ws_r.cell(last_r_row, 1).value = cid
             ws_r.cell(last_r_row, 2).value = target_id

@@ -228,6 +228,22 @@ function saveCharacter(payload) {
   return getDatabase();
 }
 
+function charKeys_(cid, nom, nomVO) {
+  const keys = {};
+  function add(s) {
+    if (!s || !str_(s)) return;
+    const k = slugify_(s);
+    if (k && k !== "perso" && k.length >= 3) keys[k] = true;
+  }
+  add(cid);
+  [nom, nomVO].forEach(function (field) {
+    String(field || "").split("/").forEach(function (part) {
+      add(part);
+    });
+  });
+  return keys;
+}
+
 function saveCharacterUnlocked_(payload) {
   const charData = payload.character;
   const newRelations = payload.relations || [];
@@ -236,22 +252,46 @@ function saveCharacterUnlocked_(payload) {
   const ss = getSpreadsheet_();
   const wsP = ss.getSheetByName("Personnages");
   const wsR = ss.getSheetByName("Relation");
-  const cid = str_(charData.id) || slugify_(charData.nom);
+  let cid = str_(charData.id) || slugify_(charData.nom);
+  const inKeys = charKeys_(cid, charData.nom, charData.nomVO);
 
   const pv = wsP.getDataRange().getValues();
   let targetRow = -1;
+  let aliasRow = -1;
+  let aliasIdx = -1;
+  let aliasId = "";
   const nameToId = {};
   for (let i = 1; i < pv.length; i++) {
     const pid = str_(pv[i][0]);
     if (!pid) continue;
-    if (pid === cid) targetRow = i + 1;
-    [pid, str_(pv[i][1]), str_(pv[i][2])].forEach(function (n) {
+    const pvf = str_(pv[i][1]), pvo = str_(pv[i][2]);
+    if (pid === cid) {
+      targetRow = i + 1;
+    } else if (aliasRow < 0) {
+      const pKeys = charKeys_(pid, pvf, pvo);
+      for (const k in inKeys) {
+        if (pKeys[k]) {
+          aliasRow = i + 1;
+          aliasIdx = i;
+          aliasId = pid;
+          break;
+        }
+      }
+    }
+    [pid, pvf, pvo].forEach(function (n) {
       if (n) {
         nameToId[n.toLowerCase()] = pid;
         nameToId[n.split("/")[0].trim().toLowerCase()] = pid;
         nameToId[slugify_(n)] = pid;
       }
     });
+  }
+
+  let isMergedDuplicate = false;
+  if (targetRow < 0 && aliasRow > 0) {
+    cid = aliasId;
+    targetRow = aliasRow;
+    isMergedDuplicate = true;
   }
 
   const rowValues = [
@@ -262,6 +302,17 @@ function saveCharacterUnlocked_(payload) {
     charData.maisonsGarennes || "", charData.role || "", charData.statut || "",
     charData.resume || "", charData.tomes || "", charData.portrait || ""
   ].map(function (x) { return x === null || x === undefined ? "" : String(x); });
+
+  if (isMergedDuplicate && aliasIdx >= 0) {
+    for (let c = 1; c < 20; c++) {
+      const existingVal = str_(pv[aliasIdx][c]);
+      if (c === 19 && existingVal.indexOf("portraits/") === 0 && (!rowValues[19] || rowValues[19].indexOf("http") === 0)) {
+        rowValues[19] = existingVal;
+      } else if (!str_(rowValues[c]) && existingVal) {
+        rowValues[c] = String(pv[aliasIdx][c]);
+      }
+    }
+  }
 
   if (targetRow < 0) {
     targetRow = Math.max(wsP.getLastRow(), 1) + 1;
