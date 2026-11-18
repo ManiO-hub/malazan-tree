@@ -1152,457 +1152,932 @@ function getRankScore(p) {
   return 10;
 }
 
-// Chef suprême de chaque Faction (au centre du grand ovale du Camp)
-const FACTION_CHIEFS = {
-  "empire": "laseen",
-  "wickien": "coltaine",
-  "coalition": "caladan",
-  "darujhistan": "kruppe",
-  "luneNoire": "anomander-rake",
-  "edur": "hannan-mosag",
-  "lether": "ezgar-diskanar",
-  "independant": "k-azz",
-  "t-lan-imass": "logros",
-  "innommes": "mappo",
-  "divin": "k-rul"
+// Pour chaque Dieu : l'ID du personnage mortel (ou chef d'îlot) avec lequel il est le plus en accointance,
+// ainsi qu'un décalage (dx, dy) pour le placer juste à côté de cet îlot (sans regrouper les dieux entre eux !)
+const GOD_ACQUAINTANCE_ANCHORS = {
+  "kellanved":     { targetId: "laseen",         fallbackId: "tavore-paran", dx: -230, dy: -110 },
+  "danseur":       { targetId: "baudin",         fallbackId: "apsalar",      dx: -185, dy: -120 },
+  "apt":           { targetId: "panek",          fallbackId: "minala",       dx:  195, dy:  -95 },
+  "hood":          { targetId: "dassem-ultor",   fallbackId: "deadsmell",    dx: -195, dy: -115 },
+  "d-rek":         { targetId: "banaschar",      fallbackId: "tayschrenn",   dx:  210, dy: -115 },
+  "oponn":         { targetId: "ganoes-paran",   fallbackId: "crokus",       dx: -195, dy:  -95 },
+  "fener":         { targetId: "brukhalian",     fallbackId: "itkovian",     dx:    0, dy: -175 },
+  "treach":        { targetId: "gruntle",        fallbackId: "heboric",      dx:    0, dy: -175 },
+  "k-rul":         { targetId: "kruppe",         fallbackId: "baruk",        dx: -210, dy: -110 },
+  "burn":          { targetId: "caladan",        fallbackId: "jorrick-lancepercante", dx: -210, dy: -90 },
+  "draconus":      { targetId: "anomander-rake", fallbackId: "dame-envie",   dx: -220, dy: -105 },
+  "osserc":        { targetId: "oric",           fallbackId: "anomander-rake", dx: 200, dy: -110 },
+  "mael":          { targetId: "tehol-beddict",  fallbackId: "brys-beddict", dx:  195, dy:  -85 },
+  "errastas":      { targetId: "ezgar-diskanar", fallbackId: "plume-sorciere", dx: -215, dy: -110 },
+  "sechul-lath":   { targetId: "ezgar-diskanar", fallbackId: "errastas",     dx:    0, dy: -175 },
+  "kilmandaros":   { targetId: "ezgar-diskanar", fallbackId: "silchas-ruin", dx:  215, dy: -110 },
+  "dieu-estropie": { targetId: "rhulad-sengar",  fallbackId: "karsa",        dx: -210, dy: -115 },
+  "poliel":        { targetId: "hannan-mosag",   fallbackId: "rhulad-sengar",dx:  210, dy: -115 },
+  "edgewalker":    { targetId: "mappo",          fallbackId: "gothos",       dx: -195, dy: -110 }
 };
 
-// Détermine dans quel ovale d'unité (Armée / Bataillon / Escouade / Équipage) ranger chaque personnage
-// Retourne { name, tier, parentLeaderId, defaultLeaderId }
+// Détermine le petit îlot (escouade / bataillon / régiment / état-major) d'un personnage mortel
+// et son rattachement dans l'ARBRE hiérarchique du Camp :
+// Escouade (Sergent) -> Régiment/Compagnie (Capitaine) -> Légion (Poing) -> Armée (Haut Poing / Adjointe) -> Chef de Faction (Impératrice / Roi)
 function getSubUnitSpec(p) {
   const f = p.faction || "independant";
   const arm = (p.armee || "").toLowerCase();
+  const leg = (p.legion || "").toLowerCase();
   const reg = (p.regiment || "").toLowerCase();
   const uni = (p.unite || "").toLowerCase();
   const rol = (p.role || "").toLowerCase();
   const cid = p.id;
 
   if (f === "divin") {
-    if (["k-rul", "mael", "draconus", "kilmandaros", "errastas", "sechul-lath", "edgewalker", "burn"].includes(cid)) {
-      return { name: "🌌 Dieux Anciens (Elder Gods)", tier: 0, leaderId: "k-rul", parentId: null };
-    }
-    return { name: "👑 Souverains des Hautes Maisons", tier: 1, leaderId: "kellanved", parentId: "k-rul" };
+    const anch = GOD_ACQUAINTANCE_ANCHORS[cid];
+    const targetName = anch && persoById[anch.targetId] ? persoById[anch.targetId].nom : "ses alliés mortels";
+    return {
+      campKey: "divin",
+      islandId: "divin-" + cid,
+      name: `⭐ Divinité libre (en accointance près de ${targetName})`,
+      leaderId: cid,
+      parentIslandId: null,
+      parentLeaderId: null
+    };
   }
 
-  if (f === "empire") {
-    // Centre du camp : Haut Commandement Impérial (autour de l'Impératrice Laseen)
-    if (["laseen", "lorn", "tayschrenn", "dassem-ultor", "mallick-rel", "toc-l-ancien", "brave-dent"].includes(cid)) {
-      return { name: "👑 Cour Impériale & Vieille Garde", tier: 0, leaderId: "laseen", parentId: null };
+  // --- CAMP 1 : EMPIRE MALAZÉEN & CLANS WICKIENS (Arbre militaire complet) ---
+  if (f === "empire" || f === "wickien") {
+    // Niveau 0 (Racine de l'arbre) : L'Impératrice Laseen & la Cour Impériale
+    if (["laseen", "lorn", "mallick-rel"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-cour",
+        name: "👑 Cour Impériale (Impératrice Laseen)",
+        leaderId: "laseen",
+        parentIslandId: null,
+        parentLeaderId: null
+      };
     }
-    if (arm.includes("griffe") || arm.includes("serre") || reg.includes("griffe") || reg.includes("serre")) {
-      return { name: "🗡️ La Griffe & La Serre", tier: 1, leaderId: "topper", parentId: "laseen" };
+
+    // Niveau 1 : Branches rattachées directement à l'Impératrice Laseen
+    // 1A. Vieille Garde & Haut Cadre Impérial
+    if (["dassem-ultor", "tayschrenn", "toc-l-ancien", "brave-dent"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-vieille-garde",
+        name: "🏛️ Vieille Garde & Haut Cadre",
+        leaderId: "dassem-ultor",
+        parentIslandId: "emp-cour",
+        parentLeaderId: "laseen"
+      };
     }
-    if (arm.includes("marine impériale")) {
-      return { name: "⚓ Marine Impériale (Flotte)", tier: 1, leaderId: "nok", parentId: "laseen" };
+    // 1B. La Griffe (séparée de La Serre !)
+    if (cid === "topper" || cid === "perle" || arm.includes("griffe") || reg.includes("griffe")) {
+      return {
+        campKey: "empire",
+        islandId: "emp-griffe",
+        name: "🗡️ La Griffe (Services Secrets)",
+        leaderId: "topper",
+        parentIslandId: "emp-cour",
+        parentLeaderId: "laseen"
+      };
     }
-    if (arm.includes("7e armée")) {
-      return { name: "🐺 7e Armée (La Chaîne des Chiens)", tier: 1, leaderId: "duiker", parentId: "laseen" };
+    // 1C. La Serre (séparée de La Griffe !)
+    if (cid === "baudin" || arm.includes("serre") || reg.includes("serre")) {
+      return {
+        campKey: "empire",
+        islandId: "emp-serre",
+        name: "🦅 La Serre (Réseau de Danseur)",
+        leaderId: "baudin",
+        parentIslandId: "emp-cour",
+        parentLeaderId: "laseen"
+      };
     }
+    // 1D. Marine Impériale (Flotte)
+    if (arm.includes("marine impériale") || ["nok", "cartheron-croute", "urko-croute"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-marine",
+        name: "⚓ Marine Impériale (Flotte)",
+        leaderId: "nok",
+        parentIslandId: "emp-cour",
+        parentLeaderId: "laseen"
+      };
+    }
+
+    // 1E. Branche 7e Armée : Haut Poing Pormqual -> Poing Coltaine -> Cadre & Escouades
+    if (cid === "pormqual") {
+      return {
+        campKey: "empire",
+        islandId: "emp-7e-hautpoing",
+        name: "🏛️ Haut Commandement Sept-Cités (Haut Poing)",
+        leaderId: "pormqual",
+        parentIslandId: "emp-cour",
+        parentLeaderId: "laseen"
+      };
+    }
+    if (arm.includes("7e armée") || ["coltaine", "bult", "duiker", "list", "squint", "lenestro", "tumlit", "sormo", "kulp"].includes(cid)) {
+      if (["sormo", "kulp"].includes(cid)) {
+        return {
+          campKey: "empire",
+          islandId: "emp-7e-mages",
+          name: "✨ Cadre Magique & Sorciers (7e Armée)",
+          leaderId: "sormo",
+          parentIslandId: "emp-7e-coltaine",
+          parentLeaderId: "coltaine"
+        };
+      }
+      if (["duiker", "list", "squint", "lenestro", "tumlit"].includes(cid)) {
+        return {
+          campKey: "empire",
+          islandId: "emp-7e-convoi",
+          name: "⛺ Garnison d'Aren & Convoi (7e Armée)",
+          leaderId: "duiker",
+          parentIslandId: "emp-7e-coltaine",
+          parentLeaderId: "coltaine"
+        };
+      }
+      return {
+        campKey: "empire",
+        islandId: "emp-7e-coltaine",
+        name: "🐺 7e Armée · La Chaîne des Chiens (Poing Coltaine)",
+        leaderId: "coltaine",
+        parentIslandId: "emp-7e-hautpoing",
+        parentLeaderId: "pormqual"
+      };
+    }
+
+    // 1F. Branche 2e Armée (L'Ost de Unbras) : Haut Poing Dujek -> Capitaine Paran / Cadre -> 9e & 7e Escouades
     if (arm.includes("2e armée") || reg.includes("brûleurs de ponts")) {
-      if (uni.includes("9e escouade") || cid === "ganoes-paran") {
-        return { name: "🔥 Brûleurs de Ponts · 9e Escouade", tier: 2, leaderId: "mesangeai", parentId: "dujek" };
+      if (["dujek", "retors"].includes(cid)) {
+        return {
+          campKey: "empire",
+          islandId: "emp-2e-dujek",
+          name: "🦅 2e Armée · L'Ost de Unbras (Haut Poing Dujek)",
+          leaderId: "dujek",
+          parentIslandId: "emp-cour",
+          parentLeaderId: "laseen"
+        };
       }
-      if (uni.includes("7e escouade")) {
-        return { name: "🔥 Brûleurs de Ponts · 7e Escouade", tier: 2, leaderId: "antisy", parentId: "mesangeai" };
+      if (["loquevoile", "bellurdan", "frissombre", "a-karonys", "calot", "hairlock", "toc-le-jeune"].includes(cid)) {
+        return {
+          campKey: "empire",
+          islandId: "emp-2e-cadre",
+          name: "✨ Cadre de Mages & Éclaireurs (2e Armée)",
+          leaderId: "loquevoile",
+          parentIslandId: "emp-2e-dujek",
+          parentLeaderId: "dujek"
+        };
       }
-      return { name: "🦅 2e Armée (Ost de Unbras) · État-major & Cadre", tier: 1, leaderId: "dujek", parentId: "laseen" };
+      if (cid === "ganoes-paran") {
+        return {
+          campKey: "empire",
+          islandId: "emp-2e-cie-bp",
+          name: "🔥 9e Compagnie · Brûleurs de Ponts (Capitaine Paran)",
+          leaderId: "ganoes-paran",
+          parentIslandId: "emp-2e-dujek",
+          parentLeaderId: "dujek"
+        };
+      }
+      if (uni.includes("7e escouade") || ["antisy", "piocheuse", "blend"].includes(cid)) {
+        return {
+          campKey: "empire",
+          islandId: "emp-2e-7e-esc",
+          name: "⛺ 7e Escouade · Brûleurs de Ponts (Sgt Bougeotte)",
+          leaderId: "antisy",
+          parentIslandId: "emp-2e-cie-bp",
+          parentLeaderId: "ganoes-paran"
+        };
+      }
+      return {
+        campKey: "empire",
+        islandId: "emp-2e-9e-esc",
+        name: "⛺ 9e Escouade · Brûleurs de Ponts (Sgt Mésangeai)",
+        leaderId: "mesangeai",
+        parentIslandId: "emp-2e-cie-bp",
+        parentLeaderId: "ganoes-paran"
+      };
     }
-    if (arm.includes("14e armée")) {
-      if (uni.includes("4e escouade")) {
-        return { name: "🦴 14e Armée · 4e Escouade (Violain)", tier: 2, leaderId: "violain", parentId: "faradan-sort" };
-      }
-      if (uni.includes("5e escouade")) {
-        return { name: "🦴 14e Armée · 5e Escouade (Gesler)", tier: 2, leaderId: "gesler", parentId: "faradan-sort" };
-      }
-      if (reg.includes("2e compagnie") || uni.includes("7e escouade")) {
-        return { name: "⚔️ 14e Armée · 2e Cie & 7e Escouade (Ashok)", tier: 2, leaderId: "affable", parentId: "keneb" };
-      }
-      if (uni.includes("8e escouade")) {
-        return { name: "🦴 14e Armée · 8e Escouade (Hellian)", tier: 2, leaderId: "hellian", parentId: "faradan-sort" };
-      }
-      if (uni.includes("9e escouade") || uni.includes("12e escouade") || uni.includes("13e escouade")) {
-        return { name: "🦴 14e Armée · 9e & 13e Escouades (Baume & Urb)", tier: 2, leaderId: "baume", parentId: "faradan-sort" };
-      }
-      if (reg.includes("nouveaux brûleurs")) {
-        return { name: "🔥 14e Armée · Nouveaux Brûleurs de Ponts", tier: 2, leaderId: "bombasse", parentId: "esquive" };
-      }
-      return { name: "👑 14e Armée (Les Osseleurs) · État-major & Légions", tier: 1, leaderId: "tavore-paran", parentId: "laseen" };
+
+    // 1G. Branche 14e Armée (Les Osseleurs) :
+    // Adjointe Tavore -> Poings (8e, 9e, 10e Légions & Cavalerie Wickienne) -> Capitaines (9e Cie, 2e Cie Ashok) -> Petits îlots d'Escouades (Sergents)
+    if (["tavore-paran", "lostara-yil", "ben-le-vif", "ruthan-gudd", "banaschar"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-tavore",
+        name: "👑 14e Armée · Les Osseleurs (Adjointe Tavore)",
+        leaderId: "tavore-paran",
+        parentIslandId: "emp-cour",
+        parentLeaderId: "laseen"
+      };
     }
-    return { name: "🏛️ Garnisons & Cadres Impériaux", tier: 1, leaderId: "tayschrenn", parentId: "laseen" };
+    // Légions sous Tavore :
+    if (cid === "blistig" || leg.includes("9e légion")) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-9leg",
+        name: "🦅 9e Légion (Poing Blistig)",
+        leaderId: "blistig",
+        parentIslandId: "emp-14e-tavore",
+        parentLeaderId: "tavore-paran"
+      };
+    }
+    if (cid === "tene-baralta" || leg.includes("10e légion")) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-10leg",
+        name: "🦅 10e Légion & Épées Rouges (Poing Tene Baralta)",
+        leaderId: "tene-baralta",
+        parentIslandId: "emp-14e-tavore",
+        parentLeaderId: "tavore-paran"
+      };
+    }
+    if (["temul", "infime", "nul"].includes(cid) || f === "wickien") {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-wickiens",
+        name: "🐎 Division Wickienne 14e Armée (Poing Temul)",
+        leaderId: "temul",
+        parentIslandId: "emp-14e-tavore",
+        parentLeaderId: "tavore-paran"
+      };
+    }
+    if (["keneb", "gamet", "grub"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-8leg",
+        name: "🦅 8e Légion (Poings Gamet & Keneb)",
+        leaderId: "keneb",
+        parentIslandId: "emp-14e-tavore",
+        parentLeaderId: "tavore-paran"
+      };
+    }
+    // Compagnies / Régiments sous le Poing Keneb (8e Légion) :
+    if (["affable", "pores"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-2cie-ashok",
+        name: "⚔️ 2e Compagnie · Régiment d'Ashok (Cpt Affable)",
+        leaderId: "affable",
+        parentIslandId: "emp-14e-8leg",
+        parentLeaderId: "keneb"
+      };
+    }
+    if (["ebron", "sinn", "cordon", "tesson", "crevard"].includes(cid) || uni.includes("7e escouade") || reg.includes("ashok")) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-7esc",
+        name: "⛺ 5e / 7e Escouade · Ashok (Sgt Cordon / Ebron)",
+        leaderId: "ebron",
+        parentIslandId: "emp-14e-2cie-ashok",
+        parentLeaderId: "affable"
+      };
+    }
+    if (["esquive", "bombasse", "saindoux"].includes(cid) || reg.includes("nouveaux brûleurs")) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-nouv-bp",
+        name: "🔥 Nouveaux Brûleurs de Ponts (Esquive)",
+        leaderId: "esquive",
+        parentIslandId: "emp-14e-8leg",
+        parentLeaderId: "keneb"
+      };
+    }
+    if (["faradan-sort", "bec"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-9cie",
+        name: "🛡️ 9e Compagnie · 8e Légion (Cpt Faradan Sort)",
+        leaderId: "faradan-sort",
+        parentIslandId: "emp-14e-8leg",
+        parentLeaderId: "keneb"
+      };
+    }
+    // Petits îlots d'Escouades sous le Capitaine Faradan Sort (9e Compagnie, 8e Légion) :
+    if (uni.includes("4e escouade") || ["violain", "tarr", "bottle", "cuttle", "koryk", "smiles", "corabb"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-4esc",
+        name: "⛺ 4e Escouade · Marines (Sgt Violain)",
+        leaderId: "violain",
+        parentIslandId: "emp-14e-9cie",
+        parentLeaderId: "faradan-sort"
+      };
+    }
+    if (uni.includes("5e escouade") || ["gesler", "stormy", "truth", "pella"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-5esc",
+        name: "⛺ 5e Escouade · Marines (Sgt Gesler)",
+        leaderId: "gesler",
+        parentIslandId: "emp-14e-9cie",
+        parentLeaderId: "faradan-sort"
+      };
+    }
+    if (uni.includes("8e escouade") || ["hellian", "tavos-mare", "peut-etre", "luth"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-8esc",
+        name: "⛺ 8e Escouade · Kartool & Marines (Sgt Hellian)",
+        leaderId: "hellian",
+        parentIslandId: "emp-14e-9cie",
+        parentLeaderId: "faradan-sort"
+      };
+    }
+    if (uni.includes("9e escouade") || ["baume", "deadsmell", "throatslitter"].includes(cid)) {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-9esc",
+        name: "⛺ 9e Escouade (Sgt Baume)",
+        leaderId: "baume",
+        parentIslandId: "emp-14e-9cie",
+        parentLeaderId: "faradan-sort"
+      };
+    }
+    if (uni.includes("13e escouade") || cid === "urb") {
+      return {
+        campKey: "empire",
+        islandId: "emp-14e-13esc",
+        name: "⛺ 13e Escouade · Lourds (Sgt Urb)",
+        leaderId: "urb",
+        parentIslandId: "emp-14e-9cie",
+        parentLeaderId: "faradan-sort"
+      };
+    }
+    return {
+      campKey: "empire",
+      islandId: "emp-14e-9cie",
+      name: "🛡️ 9e Compagnie · 8e Légion (Cpt Faradan Sort)",
+      leaderId: "faradan-sort",
+      parentIslandId: "emp-14e-8leg",
+      parentLeaderId: "keneb"
+    };
   }
 
-  if (f === "wickien") {
-    if (uni.includes("sorcier") || rol.includes("sorcier") || rol.includes("sorcière")) {
-      return { name: "✨ Cadre des Sorciers Wickiens", tier: 1, leaderId: "sormo", parentId: "coltaine" };
+  // --- CAMP 2 : COALITION DE GENABACKIS & RÉBELLION DU TOURBILLON ---
+  if (f === "coalition" || cid === "kallor") {
+    if (["caladan", "kallor", "jorrick-lancepercante"].includes(cid)) {
+      return {
+        campKey: "coalition",
+        islandId: "coal-brood",
+        name: "🔨 Ost de Genabackis (Caladan Rumin)",
+        leaderId: "caladan",
+        parentIslandId: null,
+        parentLeaderId: null
+      };
     }
-    return { name: "🐎 Commandement & Cavalerie Wickienne", tier: 0, leaderId: "coltaine", parentId: null };
+    if (["felisin-paran", "dryjhna"].includes(cid)) {
+      return {
+        campKey: "coalition",
+        islandId: "coal-shaik",
+        name: "🌪️ Oasis de Raraku (Prophétesse Sha'ik)",
+        leaderId: "felisin-paran",
+        parentIslandId: null,
+        parentLeaderId: null
+      };
+    }
+    if (["kamist-reloe", "oric"].includes(cid)) {
+      return {
+        campKey: "coalition",
+        islandId: "coal-mages",
+        name: "✨ Haut Cadre du Tourbillon",
+        leaderId: "oric",
+        parentIslandId: "coal-shaik",
+        parentLeaderId: "felisin-paran"
+      };
+    }
+    return {
+      campKey: "coalition",
+      islandId: "coal-armee",
+      name: "⛺ Armée de l'Apocalypse (Korbolo Dom & Léoman)",
+      leaderId: "leoman",
+      parentIslandId: "coal-shaik",
+      parentLeaderId: "felisin-paran"
+    };
   }
 
-  if (f === "coalition") {
-    if (arm.includes("apocalypse") || arm.includes("tourbillon")) {
-      return { name: "🌪️ Armée de l'Apocalypse (Tourbillon)", tier: 1, leaderId: "felisin-paran", parentId: "caladan" };
+  // --- CAMP 3 : CITÉ FRANCHE DE DARUJHISTAN ---
+  if (f === "darujhistan" || ["crokus", "torvald"].includes(cid)) {
+    if (["vorcan", "rallick-nom"].includes(cid) || arm.includes("guilde des assassins")) {
+      return {
+        campKey: "darujhistan",
+        islandId: "daru-guilde",
+        name: "🌑 Guilde des Assassins (Maîtresse Vorcan)",
+        leaderId: "vorcan",
+        parentIslandId: "daru-phenix",
+        parentLeaderId: "kruppe"
+      };
     }
-    return { name: "🔨 Ost de Genabackis (Caladan Rumin)", tier: 0, leaderId: "caladan", parentId: null };
+    if (["baruk", "mammot", "estraysian", "challice", "turban-orr"].includes(cid)) {
+      return {
+        campKey: "darujhistan",
+        islandId: "daru-cabale",
+        name: "🏛️ Cabale T'orrud & Conseil des Nobles",
+        leaderId: "baruk",
+        parentIslandId: "daru-phenix",
+        parentLeaderId: "kruppe"
+      };
+    }
+    return {
+      campKey: "darujhistan",
+      islandId: "daru-phenix",
+      name: "🍺 Taverne du Phénix & Réseau de Kruppe",
+      leaderId: "kruppe",
+      parentIslandId: null,
+      parentLeaderId: null
+    };
   }
 
-  if (f === "darujhistan") {
-    if (arm.includes("guilde des assassins") || reg.includes("guilde des assassins")) {
-      return { name: "🌑 Guilde des Assassins", tier: 1, leaderId: "vorcan", parentId: "kruppe" };
-    }
-    if (["kruppe", "coll", "murillio", "brise-cercle"].includes(cid)) {
-      return { name: "🍺 Taverne du Phénix & Cercle de l'Anguille", tier: 0, leaderId: "kruppe", parentId: null };
-    }
-    return { name: "🏛️ Cabale T'orrud & Conseil des Nobles", tier: 1, leaderId: "baruk", parentId: "kruppe" };
-  }
-
+  // --- CAMP 4 : LUNE NOIRE / TISTE ANDII ---
   if (f === "luneNoire") {
-    if (["silchas-ruin", "nimander", "skintick", "nenanda", "aranatha", "kedeviss", "desra", "clip"].includes(cid)) {
-      return { name: "🗡️ Lignée de Rake & Pèlerins Andii", tier: 1, leaderId: "silchas-ruin", parentId: "anomander-rake" };
+    if (["anomander-rake", "endest-silann", "megere"].includes(cid)) {
+      return {
+        campKey: "luneNoire",
+        islandId: "andii-rake",
+        name: "🌙 Trône de Sangdelune & Corail Noir (Anomander Rake)",
+        leaderId: "anomander-rake",
+        parentIslandId: null,
+        parentLeaderId: null
+      };
     }
-    return { name: "🌙 Cour de Sangdelune & Corail Noir", tier: 0, leaderId: "anomander-rake", parentId: null };
+    if (["korlat", "orfantal", "spinnock-durav", "hurlochel"].includes(cid)) {
+      return {
+        campKey: "luneNoire",
+        islandId: "andii-ost",
+        name: "🦅 Ost Militaire Tiste Andii (Korlat & Spinnock)",
+        leaderId: "korlat",
+        parentIslandId: "andii-rake",
+        parentLeaderId: "anomander-rake"
+      };
+    }
+    return {
+      campKey: "luneNoire",
+      islandId: "andii-pelerins",
+      name: "🗡️ Lignée de Rake & Pèlerins (Silchas Ruin & Nimander)",
+      leaderId: "silchas-ruin",
+      parentIslandId: "andii-rake",
+      parentLeaderId: "anomander-rake"
+    };
   }
 
-  if (f === "edur") {
-    if (cid.includes("sengar") && cid !== "rhulad-sengar" || cid === "mayen") {
-      return { name: "⚔️ Lignée & Guerriers Sengar", tier: 1, leaderId: "fear-sengar", parentId: "rhulad-sengar" };
-    }
-    return { name: "🌑 Cour de l'Empereur & du Roi Sorcier", tier: 0, leaderId: "rhulad-sengar", parentId: null };
-  }
-
+  // --- CAMP 5 : ROYAUME DE LETHER ---
   if (f === "lether") {
-    if (reg.includes("inextinguible gratitude") || arm.includes("pirate")) {
-      return { name: "🏴‍☠️ Équipage de l'Inextinguible Gratitude", tier: 1, leaderId: "shurq-elalle", parentId: "tehol-beddict" };
+    if (["ezgar-diskanar", "triban-gnol", "kuru-qan", "nifadas"].includes(cid)) {
+      return {
+        campKey: "lether",
+        islandId: "leth-cour",
+        name: "👑 Cour Royale de Letheras (Roi Ezgara)",
+        leaderId: "ezgar-diskanar",
+        parentIslandId: null,
+        parentLeaderId: null
+      };
     }
-    if (arm.includes("dératiseurs") || arm.includes("patriotistes") || arm.includes("marchands")) {
-      return { name: "🐀 Guilde des Dératiseurs & Patriotistes", tier: 1, leaderId: "ormly", parentId: "tehol-beddict" };
+    if (["brys-beddict", "gerun-eberict", "hull-beddict"].includes(cid)) {
+      return {
+        campKey: "lether",
+        islandId: "leth-garde",
+        name: "🛡️ Garde Royale & Sentinelles (Finadd Brys Beddict)",
+        leaderId: "brys-beddict",
+        parentIslandId: "leth-cour",
+        parentLeaderId: "ezgar-diskanar"
+      };
     }
-    if (["tehol-beddict", "seren-pedac", "hull-beddict"].includes(cid)) {
-      return { name: "💰 Réseau de Tehol & Frères Beddict", tier: 1, leaderId: "tehol-beddict", parentId: "ezgar-diskanar" };
+    if (["tehol-beddict", "seren-pedac"].includes(cid)) {
+      return {
+        campKey: "lether",
+        islandId: "leth-tehol",
+        name: "💰 Réseau Clandestin de Tehol Beddict",
+        leaderId: "tehol-beddict",
+        parentIslandId: "leth-cour",
+        parentLeaderId: "ezgar-diskanar"
+      };
     }
-    return { name: "👑 Cour & Garde Royale de Letheras", tier: 0, leaderId: "ezgar-diskanar", parentId: null };
+    if (["shurq-elalle", "skorgen-kaban"].includes(cid)) {
+      return {
+        campKey: "lether",
+        islandId: "leth-pirates",
+        name: "🏴‍☠️ Équipage de l'Inextinguible Gratitude (Cpt Shurq)",
+        leaderId: "shurq-elalle",
+        parentIslandId: "leth-tehol",
+        parentLeaderId: "tehol-beddict"
+      };
+    }
+    return {
+      campKey: "lether",
+      islandId: "leth-guildes",
+      name: "🐀 Guilde des Dératiseurs & Patriotistes de Drene",
+      leaderId: "ormly",
+      parentIslandId: "leth-cour",
+      parentLeaderId: "ezgar-diskanar"
+    };
   }
 
-  if (f === "independant") {
-    if (arm.includes("garde pourpre") || cid === "twisp") {
-      return { name: "🛡️ La Garde Pourpre (Les Assermentés)", tier: 0, leaderId: "k-azz", parentId: null };
+  // --- CAMP 6 : EMPIRE TISTE EDUR ---
+  if (f === "edur" || cid === "udinaas") {
+    if (["rhulad-sengar", "hannan-mosag", "bruthen-trana", "plume-sorciere", "scabandari", "udinaas"].includes(cid)) {
+      return {
+        campKey: "edur",
+        islandId: "edur-cour",
+        name: "🌑 Cour de l'Empereur Rhulad & du Roi Sorcier",
+        leaderId: "rhulad-sengar",
+        parentIslandId: null,
+        parentLeaderId: null
+      };
     }
-    if (arm.includes("épées grises")) {
-      return { name: "⚔️ Compagnie des Épées Grises", tier: 1, leaderId: "brukhalian", parentId: null };
-    }
-    if (arm.includes("ombre")) {
-      return { name: "🌑 Cour & Compagnie de l'Ombre", tier: 1, leaderId: "minala", parentId: null };
-    }
-    if (["yan-tovis", "yedan-derryg", "brullyg", "karpette", "tenace"].includes(cid)) {
-      return { name: "🌊 Peuple des Trembles (The Shake)", tier: 1, leaderId: "yan-tovis", parentId: null };
-    }
-    if (["bauchelain", "korbal-broach", "emancipor", "gruntle", "stonny", "keruli"].includes(cid)) {
-      return { name: "💀 Nécromanciens & Caravane de Capustan", tier: 1, leaderId: "gruntle", parentId: null };
-    }
-    if (["icarium", "gothos", "raest", "marmite", "tool", "onrack", "kilava", "pran-chole"].includes(cid)) {
-      return { name: "🏛️ Jaghuts, Imass & Gardiens Azath", tier: 1, leaderId: "icarium", parentId: null };
-    }
-    return { name: "🧭 Champions & Voyageurs Solitaires", tier: 1, leaderId: "karsa", parentId: null };
+    return {
+      campKey: "edur",
+      islandId: "edur-sengar",
+      name: "⚔️ Lignée & Guerriers Sengar (Tomad, Fear & Trull)",
+      leaderId: "fear-sengar",
+      parentIslandId: "edur-cour",
+      parentLeaderId: "rhulad-sengar"
+    };
   }
 
-  if (f === "t-lan-imass") {
-    return { name: "🔥 Clans T'lan Imass (Logros, Kron & Non-Liés)", tier: 0, leaderId: "logros", parentId: null };
+  // --- CAMP 7 : CLANS T'LAN IMASS ---
+  if (f === "t-lan-imass" || ["tool", "onrack", "kilava", "pran-chole"].includes(cid)) {
+    return {
+      campKey: "t-lan-imass",
+      islandId: "imass-clans",
+      name: "🔥 Clans T'lan Imass (Logros, Kron & Non-Liés)",
+      leaderId: "logros",
+      parentIslandId: null,
+      parentLeaderId: null
+    };
   }
 
-  if (f === "innommes") {
-    return { name: "🔮 Ordre des Innommés (Gardiens de l'Azath)", tier: 0, leaderId: "mappo", parentId: null };
+  // --- CAMP 8 : LES INNOMMÉS & GARDIENS DE L'AZATH ---
+  if (f === "innommes" || ["mappo", "icarium", "gothos", "raest", "marmite", "taralack-veed"].includes(cid)) {
+    return {
+      campKey: "innommes",
+      islandId: "innommes-azath",
+      name: "🔮 Les Innommés & Gardiens de l'Azath",
+      leaderId: "mappo",
+      parentIslandId: null,
+      parentLeaderId: null
+    };
   }
 
-  return { name: "⛺ Unité principale", tier: 0, leaderId: cid, parentId: null };
+  // --- CAMP 9 : COMPAGNIES FRANCHES & INDÉPENDANTS ---
+  if (arm.includes("garde pourpre") || ["k-azz", "shimmer", "cagoule", "twisp"].includes(cid)) {
+    return {
+      campKey: "independant",
+      islandId: "ind-gp-cmd",
+      name: "🛡️ Garde Pourpre · Commandement (Prince K'azz)",
+      leaderId: "k-azz",
+      parentIslandId: null,
+      parentLeaderId: null
+    };
+  }
+  if (["morose", "lesdoigts"].includes(cid) || reg.includes("6e lame")) {
+    return {
+      campKey: "independant",
+      islandId: "ind-gp-6lame",
+      name: "⛺ 6e Lame de la Garde Pourpre (Caporal Morose)",
+      leaderId: "morose",
+      parentIslandId: "ind-gp-cmd",
+      parentLeaderId: "k-azz"
+    };
+  }
+  if (arm.includes("épées grises") || ["brukhalian", "itkovian", "karnadas"].includes(cid)) {
+    return {
+      campKey: "independant",
+      islandId: "ind-epees-grises",
+      name: "⚔️ Compagnie des Épées Grises (Brukhalian)",
+      leaderId: "brukhalian",
+      parentIslandId: null,
+      parentLeaderId: null
+    };
+  }
+  if (["gruntle", "stonny", "heboric", "keruli"].includes(cid)) {
+    return {
+      campKey: "independant",
+      islandId: "ind-triche",
+      name: "🐯 Caravane de Capustan & Élus de Triche (Grognard)",
+      leaderId: "gruntle",
+      parentIslandId: null,
+      parentLeaderId: null
+    };
+  }
+  if (arm.includes("ombre") || ["iskaral-pust", "minala", "panek", "moby"].includes(cid)) {
+    return {
+      campKey: "independant",
+      islandId: "ind-ombre",
+      name: "🌑 Compagnie & Clergé de l'Ombre (Minala & Pust)",
+      leaderId: "minala",
+      parentIslandId: null,
+      parentLeaderId: null
+    };
+  }
+  if (["yan-tovis", "yedan-derryg", "brullyg", "karpette", "tenace"].includes(cid)) {
+    return {
+      campKey: "independant",
+      islandId: "ind-trembles",
+      name: "🌊 Peuple des Trembles · The Shake (Reine Brunante)",
+      leaderId: "yan-tovis",
+      parentIslandId: null,
+      parentLeaderId: null
+    };
+  }
+  if (["bauchelain", "korbal-broach", "emancipor"].includes(cid)) {
+    return {
+      campKey: "independant",
+      islandId: "ind-necro",
+      name: "💀 Nécromanciens Errants (Bauchelain & Korbal)",
+      leaderId: "bauchelain",
+      parentIslandId: null,
+      parentLeaderId: null
+    };
+  }
+  return {
+    campKey: "independant",
+    islandId: "ind-champions",
+    name: "🧭 Champions & Voyageurs (Karsa Orlong, Samar Dev…)",
+    leaderId: "karsa",
+    parentIslandId: null,
+    parentLeaderId: null
+  };
 }
 
-let layoutMode = "camps"; // "camps" (ovales organiques) ou "free" (physique libre)
+let layoutMode = "camps"; // "camps" (arbres d'îlots ovales) ou "free" (physique libre)
 let highlightDivineOnly = false;
 let renderedTerritories = []; // [{ factionId, label, color, cx, cy, rx, ry, islands: [{ title, cx, cy, rx, ry, leaderId }] }]
-let generatedHierarchyEdges = []; // Liens hiérarchiques auto-générés via les gradés vers le chef de faction
+let generatedHierarchyEdges = []; // Liens d'arbre : Escouade (Sergent) -> Régiment (Capitaine) -> Légion (Poing) -> Armée (Haut Poing) -> Impératrice
 
-// Calcule un placement 100% OVALE et RADIAL :
-// 1. Dans chaque escouade/bataillon : le Gradé est en tête/centre de l'ovale, ses soldats en anneau elliptique autour de lui.
-// 2. Dans chaque Camp : le Chef de Faction (et son unité centrale) est au cœur du grand ovale, les bataillons/escouades gravitent en orbite elliptique autour.
-// 3. Sur la carte : le Panthéon (Divinités étoilées) trône au centre-haut et les grands ovales des Camps sont disposés en constellation sans chevauchement.
+// Calcule l'affichage en ARBRE D'ÎLOTS OVALES :
+// 1. Les membres d'une escouade ne sont PAS en cercle : ils sont groupés de façon compacte dans un petit îlot ovale portant le nom de l'escouade, avec leur Gradé en tête.
+// 2. Le Gradé de l'escouade est relié au Gradé du régiment/compagnie (Capitaine), lui-même relié au Poing (Légion), lui-même relié au Haut Poing / Adjointe (Armée), lui-même relié à l'Impératrice / Chef de Faction.
+// 3. Les Dieux (en étoile + liseré de leur Garenne/Maison) ne sont PAS regroupés entre eux : chacun flotte juste à côté des mortels avec lesquels il est en accointance !
 function computeCampAndIslandLayout(nodesList) {
   renderedTerritories = [];
   generatedHierarchyEdges = [];
   const visibleNodeById = Object.fromEntries(nodesList.map(n => [n.id, n]));
 
-  const byFaction = {};
-  nodesList.forEach(n => {
-    const f = n.info.faction || "independant";
-    if (!byFaction[f]) byFaction[f] = [];
-    byFaction[f].push(n);
+  // Séparer les Mortels (placés dans les arbres d'îlots ovales) et les Dieux (placés en accointance près des mortels)
+  const mortalNodes = nodesList.filter(n => n.info.faction !== "divin");
+  const godNodes = nodesList.filter(n => n.info.faction === "divin");
+
+  const byCamp = {};
+  mortalNodes.forEach(n => {
+    const spec = getSubUnitSpec(n.info);
+    if (!byCamp[spec.campKey]) byCamp[spec.campKey] = {};
+    if (!byCamp[spec.campKey][spec.islandId]) {
+      byCamp[spec.campKey][spec.islandId] = {
+        islandId: spec.islandId,
+        title: spec.name,
+        prefLeaderId: spec.leaderId,
+        parentIslandId: spec.parentIslandId,
+        parentLeaderId: spec.parentLeaderId,
+        nodes: []
+      };
+    }
+    byCamp[spec.campKey][spec.islandId].nodes.push(n);
   });
 
-  // 1. Construire la géométrie interne (en ovales) de chaque Camp autour de (0, 0)
-  const campOvals = {};
+  const CAMP_LABELS = {
+    "empire":      { label: "Empire Malazéen (Arbre Militaire & Légions)", color: "#C0392B" },
+    "coalition":   { label: "Coalition de Genabackis & Tourbillon",        color: "#D35400" },
+    "darujhistan": { label: "Cité Franche de Darujhistan",                 color: "#9B59B6" },
+    "luneNoire":   { label: "Lune Noire / Tiste Andii",                    color: "#16A085" },
+    "lether":      { label: "Royaume de Lether",                           color: "#E67E22" },
+    "edur":        { label: "Empire Tiste Edur",                           color: "#2980B9" },
+    "t-lan-imass": { label: "Clans T'lan Imass",                           color: "#7F8C8D" },
+    "innommes":    { label: "Les Innommés & Gardiens de l'Azath",          color: "#6C5CE7" },
+    "independant": { label: "Compagnies Franches & Indépendants",          color: "#27AE60" }
+  };
 
-  Object.entries(byFaction).forEach(([fid, fNodes]) => {
-    const facMeta = (DATA.factions && DATA.factions[fid]) || { label: fid, color: "#64748b" };
-    const bySub = {};
-    fNodes.forEach(n => {
-      const spec = getSubUnitSpec(n.info);
-      if (!bySub[spec.name]) {
-        bySub[spec.name] = { title: spec.name, tier: spec.tier, prefLeaderId: spec.leaderId, parentId: spec.parentId, nodes: [] };
-      }
-      bySub[spec.name].nodes.push(n);
-    });
+  const campTrees = {};
 
-    const subOvals = Object.values(bySub).map(sub => {
-      // Trier par grade décroissant : le plus gradé est le chef de cet ovale d'unité !
-      sub.nodes.sort((a, b) => {
-        if (a.id === sub.prefLeaderId) return -1;
-        if (b.id === sub.prefLeaderId) return 1;
+  Object.entries(byCamp).forEach(([campKey, islandsMap]) => {
+    const campMeta = CAMP_LABELS[campKey] || (DATA.factions && DATA.factions[campKey]) || { label: campKey, color: "#64748b" };
+    const islands = Object.values(islandsMap);
+
+    // 1. Dans chaque petit îlot : placer le Gradé en haut, et les membres regroupés naturellement en grappe compacte dessous (PAS en cercle !)
+    const NODE_DX = 138;
+    const NODE_DY = 108;
+
+    islands.forEach(isl => {
+      isl.nodes.sort((a, b) => {
+        if (a.id === isl.prefLeaderId) return -1;
+        if (b.id === isl.prefLeaderId) return 1;
         const rDiff = getRankScore(b.info) - getRankScore(a.info);
         if (rDiff !== 0) return rDiff;
         return a.info.nom.localeCompare(b.info.nom);
       });
 
-      const leaderNode = sub.nodes[0];
+      const leaderNode = isl.nodes[0];
       leaderNode.isUnitLeader = true;
-      const others = sub.nodes.slice(1);
-      const count = sub.nodes.length;
+      isl.leaderNode = leaderNode;
+      const members = isl.nodes.slice(1);
 
-      // Calcul des rayons (rx, ry) de l'ovale de cette escouade / unité
-      let rx, ry;
-      if (count === 1) {
-        rx = 135;
-        ry = 105;
-        leaderNode._subX = 0;
-        leaderNode._subY = 8;
-      } else if (count <= 8) {
-        rx = Math.max(210, 125 + others.length * 24);
-        ry = Math.max(165, 100 + others.length * 18);
-        // Le gradé au centre de son ovale d'escouade, ses soldats en ellipse autour de lui
-        leaderNode._subX = 0;
-        leaderNode._subY = 6;
-        const ringRx = rx - 78;
-        const ringRy = ry - 64;
-        others.forEach((m, idx) => {
-          const angle = -Math.PI / 2 + (2 * Math.PI * idx) / others.length;
-          m._subX = Math.cos(angle) * ringRx;
-          m._subY = 6 + Math.sin(angle) * ringRy;
-        });
+      if (members.length === 0) {
+        leaderNode._locX = 0;
+        leaderNode._locY = 6;
+        isl.rx = 115;
+        isl.ry = 86;
       } else {
-        // 2 anneaux elliptiques concentriques autour du gradé
-        const innerCount = Math.min(7, Math.ceil(others.length * 0.45));
-        const outerCount = others.length - innerCount;
-        rx = Math.max(330, 210 + outerCount * 16);
-        ry = Math.max(260, 170 + outerCount * 12);
-        leaderNode._subX = 0;
-        leaderNode._subY = 8;
-        const inRx = rx * 0.43;
-        const inRy = ry * 0.43;
-        const outRx = rx - 82;
-        const outRy = ry - 68;
-        others.slice(0, innerCount).forEach((m, idx) => {
-          const angle = -Math.PI / 2 + (2 * Math.PI * idx) / innerCount;
-          m._subX = Math.cos(angle) * inRx;
-          m._subY = 8 + Math.sin(angle) * inRy;
+        const cols = Math.min(3, members.length);
+        const rows = Math.ceil(members.length / cols);
+        const totalRows = 1 + rows; // Ligne 0 = le Gradé, Lignes 1..rows = les membres de l'escouade
+        const totalH = (totalRows - 1) * NODE_DY;
+        const topY = -totalH / 2 + 8;
+
+        leaderNode._locX = 0;
+        leaderNode._locY = topY;
+
+        members.forEach((m, idx) => {
+          const r = Math.floor(idx / cols);
+          const c = idx % cols;
+          const inRow = (r === rows - 1) ? (members.length - r * cols) : cols;
+          const rowStartX = -((inRow - 1) * NODE_DX) / 2;
+          m._locX = rowStartX + c * NODE_DX;
+          // Légère courbure organique de 10px pour épouser l'ovale
+          const curveY = (inRow === 3 && c === 1) ? 10 : 0;
+          m._locY = topY + (r + 1) * NODE_DY + curveY;
         });
-        others.slice(innerCount).forEach((m, idx) => {
-          const angle = -Math.PI / 2 + (2 * Math.PI * idx) / outerCount + (Math.PI / outerCount);
-          m._subX = Math.cos(angle) * outRx;
-          m._subY = 8 + Math.sin(angle) * outRy;
-        });
+
+        isl.rx = Math.max(145, (cols * NODE_DX) / 2 + 58);
+        isl.ry = Math.max(115, totalH / 2 + 74);
       }
-
-      // Relier chaque membre de l'escouade à son Gradé (chef d'ovale)
-      others.forEach(m => {
-        generatedHierarchyEdges.push({
-          a: leaderNode.id,
-          b: m.id,
-          type: "Hiérarchie / Commandement",
-          label: `Chef d'unité (${sub.title.replace(/^[^\s]+\s/, "")})`,
-          isAutoHierarchy: true
-        });
-      });
-
-      return {
-        title: sub.title,
-        tier: sub.tier,
-        leaderNode,
-        parentId: sub.parentId,
-        nodes: sub.nodes,
-        rx,
-        ry
-      };
     });
 
-    // Identifier l'ovale central (tier 0 : Chef de Faction) et les ovales satellites (Armées / Bataillons / Escouades)
-    subOvals.sort((a, b) => a.tier - b.tier);
-    const centerOval = subOvals[0];
-    const satelliteOvals = subOvals.slice(1);
+    // 2. Construire l'ARBRE hiérarchique des petits îlots de ce Camp
+    const byId = Object.fromEntries(islands.map(i => [i.islandId, i]));
+    const roots = [];
+    islands.forEach(i => { i.children = []; });
 
-    // Relier le Gradé de chaque ovale satellite vers son supérieur (ou le Chef de Faction)
-    const factionChiefId = (visibleNodeById[FACTION_CHIEFS[fid]] && FACTION_CHIEFS[fid]) || centerOval.leaderNode.id;
-    if (visibleNodeById[factionChiefId]) {
-      visibleNodeById[factionChiefId].isFactionChief = true;
+    islands.forEach(i => {
+      if (i.parentIslandId && byId[i.parentIslandId] && i.parentIslandId !== i.islandId) {
+        byId[i.parentIslandId].children.push(i);
+        // Créer le lien hiérarchique d'arbre entre le Gradé parent et le Gradé de cet îlot !
+        const pLeaderId = (i.parentLeaderId && visibleNodeById[i.parentLeaderId])
+          ? i.parentLeaderId
+          : byId[i.parentIslandId].leaderNode.id;
+        if (pLeaderId && pLeaderId !== i.leaderNode.id) {
+          generatedHierarchyEdges.push({
+            a: pLeaderId,
+            b: i.leaderNode.id,
+            type: "Hiérarchie / Commandement",
+            label: `Chaîne hiérarchique : ${persoById[pLeaderId]?.nom || pLeaderId} → ${i.leaderNode.info.nom}`,
+            isAutoHierarchy: true
+          });
+        }
+      } else {
+        roots.push(i);
+      }
+    });
+
+    if (roots.length === 1) {
+      roots[0].leaderNode.isFactionChief = true;
     }
 
-    satelliteOvals.forEach(sat => {
-      const targetParentId = (sat.parentId && visibleNodeById[sat.parentId]) ? sat.parentId : factionChiefId;
-      if (targetParentId && targetParentId !== sat.leaderNode.id) {
-        generatedHierarchyEdges.push({
-          a: targetParentId,
-          b: sat.leaderNode.id,
-          type: "Hiérarchie / Commandement",
-          label: `Chaîne de commandement (${facMeta.label})`,
-          isAutoHierarchy: true
-        });
+    // 3. Calculer la largeur de chaque sous-arbre d'îlots (algorithme d'arbre hiérarchique de haut en bas)
+    const H_GAP = 54;
+    const V_GAP = 105;
+
+    function measureSubtree(isl, depth) {
+      isl.depth = depth;
+      const selfW = isl.rx * 2;
+      if (!isl.children.length) {
+        isl.subtreeW = selfW;
+        return;
       }
+      isl.children.forEach(ch => measureSubtree(ch, depth + 1));
+      const childrenTotalW = isl.children.reduce((acc, ch) => acc + ch.subtreeW, 0) + (isl.children.length - 1) * H_GAP;
+      isl.subtreeW = Math.max(selfW, childrenTotalW);
+    }
+
+    roots.forEach(r => measureSubtree(r, 0));
+
+    // Hauteur maximale de chaque niveau (depth) de l'arbre
+    const maxRyByDepth = {};
+    islands.forEach(i => {
+      maxRyByDepth[i.depth] = Math.max(maxRyByDepth[i.depth] || 90, i.ry);
     });
+    const maxDepth = Math.max(...islands.map(i => i.depth), 0);
+    const levelCenterY = {};
+    let curY = 0;
+    for (let d = 0; d <= maxDepth; d++) {
+      const ry = maxRyByDepth[d] || 100;
+      if (d === 0) {
+        levelCenterY[0] = ry;
+        curY = ry * 2;
+      } else {
+        levelCenterY[d] = curY + V_GAP + ry;
+        curY = levelCenterY[d] + ry;
+      }
+    }
 
-    // Placement radial des sous-ovales à l'intérieur du grand Ovale du Camp
-    if (satelliteOvals.length === 0) {
-      centerOval.relCx = 0;
-      centerOval.relCy = 18;
-    } else if (satelliteOvals.length <= 7) {
-      centerOval.relCx = 0;
-      centerOval.relCy = 18;
-      // Calcul du rayon d'orbite pour que les sous-ovales ne se chevauchent pas entre eux ni avec l'ovale central
-      const maxSatRx = Math.max(...satelliteOvals.map(s => s.rx));
-      const maxSatRy = Math.max(...satelliteOvals.map(s => s.ry));
-      const minOrbitFromCenterX = centerOval.rx + maxSatRx + 85;
-      const minOrbitFromCenterY = centerOval.ry + maxSatRy + 80;
-      const circumferenceNeed = satelliteOvals.reduce((acc, s) => acc + Math.max(s.rx, s.ry) * 2 + 75, 0);
-      const minOrbitFromCircum = circumferenceNeed / (2 * Math.PI);
+    function placeSubtree(isl, leftX) {
+      isl.relCx = leftX + isl.subtreeW / 2;
+      isl.relCy = levelCenterY[isl.depth];
+      if (!isl.children.length) return;
+      const childrenTotalW = isl.children.reduce((acc, ch) => acc + ch.subtreeW, 0) + (isl.children.length - 1) * H_GAP;
+      let childX = isl.relCx - childrenTotalW / 2;
+      isl.children.forEach(ch => {
+        placeSubtree(ch, childX);
+        childX += ch.subtreeW + H_GAP;
+      });
+    }
 
-      const orbitRx = Math.max(minOrbitFromCenterX, minOrbitFromCircum * 1.15);
-      const orbitRy = Math.max(minOrbitFromCenterY, minOrbitFromCircum * 0.92);
-
-      satelliteOvals.forEach((sat, idx) => {
-        const angle = -Math.PI / 2 + (2 * Math.PI * idx) / satelliteOvals.length;
-        sat.relCx = Math.cos(angle) * orbitRx;
-        sat.relCy = 18 + Math.sin(angle) * orbitRy;
+    // Si un camp a plusieurs racines indépendantes (ex: Compagnies Franches & Indépendants), les disposer sur 2 rangées équilibrées
+    if (roots.length <= 3) {
+      const totalRootsW = roots.reduce((acc, r) => acc + r.subtreeW, 0) + Math.max(0, roots.length - 1) * (H_GAP * 1.4);
+      let rxCursor = -totalRootsW / 2;
+      roots.forEach(r => {
+        placeSubtree(r, rxCursor);
+        rxCursor += r.subtreeW + H_GAP * 1.4;
       });
     } else {
-      // Pour l'Empire Malazéen (qui a ~10 sous-ovales : État-major, Armées et Escouades) :
-      // Anneau intérieur = Commandements d'Armées / Branches (tier 1)
-      // Anneau extérieur = Escouades / Compagnies (tier 2) placées en arc près de leur armée !
-      centerOval.relCx = 0;
-      centerOval.relCy = 18;
-      const ring1 = satelliteOvals.filter(s => s.tier === 1);
-      const ring2 = satelliteOvals.filter(s => s.tier >= 2);
-
-      const r1Circum = ring1.reduce((acc, s) => acc + Math.max(s.rx, s.ry) * 2 + 80, 0) / (2 * Math.PI);
-      const r1Rx = Math.max(centerOval.rx + Math.max(...ring1.map(s => s.rx), 220) + 110, r1Circum * 1.15);
-      const r1Ry = Math.max(centerOval.ry + Math.max(...ring1.map(s => s.ry), 180) + 95, r1Circum * 0.92);
-      ring1.forEach((sat, idx) => {
-        const angle = -Math.PI / 2 + (2 * Math.PI * idx) / Math.max(1, ring1.length);
-        sat.relCx = Math.cos(angle) * r1Rx;
-        sat.relCy = 18 + Math.sin(angle) * r1Ry;
+      const half = Math.ceil(roots.length / 2);
+      const row1 = roots.slice(0, half);
+      const row2 = roots.slice(half);
+      const w1 = row1.reduce((acc, r) => acc + r.subtreeW, 0) + (row1.length - 1) * (H_GAP * 1.3);
+      let c1 = -w1 / 2;
+      row1.forEach(r => {
+        placeSubtree(r, c1);
+        c1 += r.subtreeW + H_GAP * 1.3;
       });
-
-      const r2Circum = ring2.reduce((acc, s) => acc + Math.max(s.rx, s.ry) * 2 + 80, 0) / (2 * Math.PI);
-      const r2Rx = Math.max(r1Rx + Math.max(...ring2.map(s => s.rx), 240) * 2 + 125, r2Circum * 1.15);
-      const r2Ry = Math.max(r1Ry + Math.max(...ring2.map(s => s.ry), 190) * 2 + 105, r2Circum * 0.92);
-      ring2.forEach((sat, idx) => {
-        const angle = -Math.PI / 2 + (2 * Math.PI * idx) / Math.max(1, ring2.length) + (Math.PI / Math.max(2, ring2.length));
-        sat.relCx = Math.cos(angle) * r2Rx;
-        sat.relCy = 18 + Math.sin(angle) * r2Ry;
-      });
-    }
-
-    // Relaxation anti-chevauchement entre les sous-ovales d'un même Camp (en gardant centerOval au centre)
-    for (let it = 0; it < 45; it++) {
-      let subMoved = false;
-      for (let i = 0; i < subOvals.length; i++) {
-        for (let j = i + 1; j < subOvals.length; j++) {
-          const A = subOvals[i];
-          const B = subOvals[j];
-          const dx = B.relCx - A.relCx;
-          const dy = B.relCy - A.relCy;
-          const minRx = A.rx + B.rx + 65;
-          const minRy = A.ry + B.ry + 65;
-          const nd = Math.sqrt((dx * dx) / (minRx * minRx) + (dy * dy) / (minRy * minRy));
-          if (nd < 1) {
-            const push = (1 - nd) * 0.55;
-            const ang = Math.atan2(dy || 1, dx || 1);
-            const px = Math.cos(ang) * minRx * push;
-            const py = Math.sin(ang) * minRy * push;
-            if (i === 0) {
-              B.relCx += px * 2;
-              B.relCy += py * 2;
-            } else {
-              A.relCx -= px;
-              A.relCy -= py;
-              B.relCx += px;
-              B.relCy += py;
-            }
-            subMoved = true;
-          }
+      const row1MaxY = Math.max(...islands.filter(i => i.relCy !== undefined).map(i => i.relCy + i.ry), 200);
+      const w2 = row2.reduce((acc, r) => acc + r.subtreeW, 0) + Math.max(0, row2.length - 1) * (H_GAP * 1.3);
+      let c2 = -w2 / 2;
+      row2.forEach(r => {
+        placeSubtree(r, c2);
+        // Décaler la 2e rangée sous la 1re
+        function shiftY(nodeIsl, dy) {
+          nodeIsl.relCy += dy;
+          nodeIsl.children.forEach(ch => shiftY(ch, dy));
         }
-      }
-      if (!subMoved) break;
+        shiftY(r, row1MaxY + V_GAP);
+        c2 += r.subtreeW + H_GAP * 1.3;
+      });
     }
 
-    // Calcul du grand Ovale englobant tout le Camp
-    let maxExtentX = 240;
-    let maxExtentY = 200;
-    subOvals.forEach(so => {
-      maxExtentX = Math.max(maxExtentX, Math.abs(so.relCx) + so.rx + 95);
-      maxExtentY = Math.max(maxExtentY, Math.abs(so.relCy) + so.ry + 110);
+    // Recentrer l'ensemble des îlots du Camp autour de (0, 0) et calculer le grand Ovale du Camp
+    const minX = Math.min(...islands.map(i => i.relCx - i.rx));
+    const maxX = Math.max(...islands.map(i => i.relCx + i.rx));
+    const minY = Math.min(...islands.map(i => i.relCy - i.ry));
+    const maxY = Math.max(...islands.map(i => i.relCy + i.ry));
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+
+    islands.forEach(i => {
+      i.relCx -= midX;
+      i.relCy -= midY;
     });
 
-    campOvals[fid] = {
-      factionId: fid,
-      label: facMeta.label,
-      color: facMeta.color,
-      rx: maxExtentX,
-      ry: maxExtentY,
-      subOvals
+    const spanRx = (maxX - minX) / 2 + 125;
+    const spanRy = (maxY - minY) / 2 + 125;
+
+    campTrees[campKey] = {
+      factionId: campKey,
+      label: campMeta.label,
+      color: campMeta.color,
+      rx: spanRx,
+      ry: spanRy,
+      islands
     };
   });
 
-  // 2. Disposer les grands Ovales des Camps en constellation organique autour du Panthéon (sans aucun chevauchement)
-  //Angles privilégiés par camp pour une géographie harmonieuse
-  const PREFERRED_ANGLES = {
-    "divin":       -Math.PI / 2,       // Au sommet (Nord)
-    "coalition":   -Math.PI * 0.23,    // Nord-Est
-    "darujhistan":  0,                 // Est
-    "luneNoire":    Math.PI * 0.22,    // Sud-Est
-    "t-lan-imass":  Math.PI * 0.40,    // Sud-Sud-Est
-    "independant":  Math.PI * 0.53,    // Sud
-    "innommes":     Math.PI * 0.68,    // Sud-Sud-Ouest
-    "edur":         Math.PI * 0.82,    // Sud-Ouest
-    "lether":       Math.PI,           // Ouest
-    "wickien":     -Math.PI * 0.68,    // Nord-Nord-Ouest
-    "empire":      -Math.PI * 0.84     // Nord-Ouest (grand ovale)
+  // 4. Placement macroscopique des grands Ovales de Camps sans chevauchement
+  const CAMP_ANGLES = {
+    "empire":      -Math.PI / 2,       // En haut au centre (Grand arbre impérial)
+    "coalition":   -Math.PI * 0.12,    // Droite-Haut
+    "darujhistan":  Math.PI * 0.14,    // Droite
+    "luneNoire":    Math.PI * 0.32,    // Sud-Est
+    "t-lan-imass":  Math.PI * 0.45,    // Sud-Sud-Est
+    "independant":  Math.PI * 0.62,    // Sud-Sud-Ouest
+    "innommes":     Math.PI * 0.78,    // Sud-Ouest
+    "edur":         Math.PI * 0.94,    // Ouest
+    "lether":      -Math.PI * 0.82     // Nord-Ouest
   };
 
-  const fids = Object.keys(campOvals);
-  if (fids.length === 1) {
-    const only = campOvals[fids[0]];
-    only.cx = 0;
-    only.cy = 0;
+  const cKeys = Object.keys(campTrees);
+  if (cKeys.length === 1) {
+    campTrees[cKeys[0]].cx = 0;
+    campTrees[cKeys[0]].cy = 0;
   } else {
-    // Placer l'Empire ou le Panthéon et disposer les autres en couronne elliptique espacée
-    fids.sort((a, b) => (PREFERRED_ANGLES[a] ?? 0) - (PREFERRED_ANGLES[b] ?? 0));
-    fids.forEach((fid, idx) => {
-      const c = campOvals[fid];
-      const ang = PREFERRED_ANGLES[fid] ?? (-Math.PI / 2 + (2 * Math.PI * idx) / fids.length);
-      const baseDist = fid === "divin" ? 1350 : 2400;
-      c.cx = Math.cos(ang) * baseDist * 1.25;
-      c.cy = Math.sin(ang) * baseDist;
+    cKeys.forEach((ck, idx) => {
+      const c = campTrees[ck];
+      if (ck === "empire") {
+        c.cx = 0;
+        c.cy = -950;
+      } else {
+        const ang = CAMP_ANGLES[ck] ?? (-Math.PI / 2 + (2 * Math.PI * idx) / cKeys.length);
+        c.cx = Math.cos(ang) * 2800;
+        c.cy = Math.sin(ang) * 2100 + 400;
+      }
     });
 
-    // Relaxation itérative anti-chevauchement entre les grands ovales de Camps (marge 180px)
-    for (let iter = 0; iter < 80; iter++) {
+    for (let iter = 0; iter < 90; iter++) {
       let moved = false;
-      for (let i = 0; i < fids.length; i++) {
-        for (let j = i + 1; j < fids.length; j++) {
-          const A = campOvals[fids[i]];
-          const B = campOvals[fids[j]];
+      for (let i = 0; i < cKeys.length; i++) {
+        for (let j = i + 1; j < cKeys.length; j++) {
+          const A = campTrees[cKeys[i]];
+          const B = campTrees[cKeys[j]];
           const dx = B.cx - A.cx;
           const dy = B.cy - A.cy;
-          const minRx = A.rx + B.rx + 180;
-          const minRy = A.ry + B.ry + 180;
-          const normDist = Math.sqrt((dx * dx) / (minRx * minRx) + (dy * dy) / (minRy * minRy));
-          if (normDist < 1) {
-            const push = (1 - normDist) * 0.55;
+          const minRx = A.rx + B.rx + 260;
+          const minRy = A.ry + B.ry + 260;
+          const nd = Math.sqrt((dx * dx) / (minRx * minRx) + (dy * dy) / (minRy * minRy));
+          if (nd < 1) {
+            const push = (1 - nd) * 0.55;
             const ang = Math.atan2(dy || 1, dx || 1);
             const px = Math.cos(ang) * minRx * push;
             const py = Math.sin(ang) * minRy * push;
@@ -1618,22 +2093,22 @@ function computeCampAndIslandLayout(nodesList) {
     }
   }
 
-  // 3. Appliquer les coordonnées finales (x, y) aux sous-ovales et à chaque personnage
-  Object.values(campOvals).forEach(camp => {
-    const finalIslands = camp.subOvals.map(so => {
-      const islCx = camp.cx + so.relCx;
-      const islCy = camp.cy + so.relCy;
-      so.nodes.forEach(n => {
-        n.x = islCx + n._subX;
-        n.y = islCy + n._subY;
+  // 5. Appliquer les coordonnées finales (x, y) aux îlots et aux personnages mortels
+  Object.values(campTrees).forEach(camp => {
+    const finalIslands = camp.islands.map(isl => {
+      const islCx = camp.cx + isl.relCx;
+      const islCy = camp.cy + isl.relCy;
+      isl.nodes.forEach(n => {
+        n.x = islCx + n._locX;
+        n.y = islCy + n._locY;
       });
       return {
-        title: so.title,
+        title: isl.title,
         cx: islCx,
         cy: islCy,
-        rx: so.rx,
-        ry: so.ry,
-        leaderId: so.leaderNode.id
+        rx: isl.rx,
+        ry: isl.ry,
+        leaderId: isl.leaderNode.id
       };
     });
 
@@ -1647,6 +2122,47 @@ function computeCampAndIslandLayout(nodesList) {
       ry: camp.ry,
       islands: finalIslands
     });
+  });
+
+  // 6. Placer chaque DIEU (sans les regrouper entre eux !) directement près des mortels avec lesquels il est en accointance
+  const placedGodPositions = [];
+  godNodes.forEach((gn, idx) => {
+    const anchorSpec = GOD_ACQUAINTANCE_ANCHORS[gn.id];
+    let targetNode = null;
+    if (anchorSpec) {
+      targetNode = visibleNodeById[anchorSpec.targetId] || visibleNodeById[anchorSpec.fallbackId];
+    }
+    // Si la cible d'accointance n'est pas trouvée via la table, chercher dans DATA.relations le premier mortel lié à ce dieu
+    if (!targetNode) {
+      const rel = DATA.relations.find(r =>
+        (r.a === gn.id && visibleNodeById[r.b] && visibleNodeById[r.b].info.faction !== "divin") ||
+        (r.b === gn.id && visibleNodeById[r.a] && visibleNodeById[r.a].info.faction !== "divin")
+      );
+      if (rel) {
+        const otherId = rel.a === gn.id ? rel.b : rel.a;
+        targetNode = visibleNodeById[otherId];
+      }
+    }
+
+    if (targetNode && targetNode.x !== undefined) {
+      let gx = targetNode.x + (anchorSpec ? anchorSpec.dx : 0);
+      let gy = targetNode.y + (anchorSpec ? anchorSpec.dy : -165);
+      // Éviter que deux dieux proches du même mortel ne se superposent
+      placedGodPositions.forEach(prev => {
+        const d = Math.hypot(gx - prev.x, gy - prev.y);
+        if (d < 155) {
+          gx += 160;
+        }
+      });
+      gn.x = gx;
+      gn.y = gy;
+    } else {
+      // Si seuls les dieux sont affichés (filtre Divin uniquement), les espacer en arc aéré
+      const ang = -Math.PI * 0.85 + (Math.PI * 1.7 * idx) / Math.max(1, godNodes.length - 1);
+      gn.x = Math.cos(ang) * 950;
+      gn.y = Math.sin(ang) * 620;
+    }
+    placedGodPositions.push({ x: gn.x, y: gn.y });
   });
 }
 
@@ -2371,9 +2887,9 @@ function buildEdgesForNodes(matchedIds) {
     const isCrossCamp = pA && pB && pA.faction !== pB.faction;
     const isDivineLink = (pA && pA.faction === "divin") || (pB && pB.faction === "divin");
 
-    let edgeColor = s.color;
-    let edgeWidth = isDivineLink ? 2.6 : (r.isAutoHierarchy ? 1.8 : 2.1);
-    if (dimCross && isCrossCamp && !isDivineLink) {
+    let edgeColor = r.isAutoHierarchy ? "#38bdf8" : s.color;
+    let edgeWidth = isDivineLink ? 2.6 : (r.isAutoHierarchy ? 2.8 : 2.1);
+    if (dimCross && isCrossCamp && !isDivineLink && !r.isAutoHierarchy) {
       edgeColor = hexToRgba(s.color, 0.2);
       edgeWidth = 1.1;
     }
@@ -2385,7 +2901,7 @@ function buildEdgesForNodes(matchedIds) {
       label: ((dimCross && isCrossCamp && !isDivineLink) || r.isAutoHierarchy) ? "" : r.type,
       title: `${r.type} : ${r.label}`,
       width: edgeWidth,
-      dashes: isDivineLink ? [6, 4] : (r.isAutoHierarchy ? [4, 4] : !!s.dashes),
+      dashes: isDivineLink ? [6, 4] : (r.isAutoHierarchy ? false : !!s.dashes),
       color: { color: edgeColor, highlight: "#facc15", hover: "#fde047" },
       font: { color: edgeColor, size: 10, strokeWidth: 2, strokeColor: "#0e1015", align: "middle" },
       arrows: s.directed ? { to: { enabled: true, scaleFactor: 0.65 } } : undefined,
