@@ -822,6 +822,24 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
     ws_r = wb["Relation"]
     existing_rels = set()
     last_r_row = 1
+
+    # Dictionnaire de résolution pour retrouver l'ID exact même si l'utilisateur a saisi le nom complet (ex: "Icarium le Fléau")
+    name_to_id = {}
+    for r in range(2, ws_p.max_row + 1):
+        pid = str(ws_p.cell(r, 1).value or "").strip()
+        pvf = str(ws_p.cell(r, 2).value or "").strip()
+        pvo = str(ws_p.cell(r, 3).value or "").strip()
+        if pid:
+            name_to_id[pid.lower()] = pid
+            if pvf:
+                name_to_id[pvf.lower()] = pid
+                name_to_id[pvf.split("/")[0].strip().lower()] = pid
+                name_to_id[slugify(pvf)] = pid
+            if pvo:
+                name_to_id[pvo.lower()] = pid
+                name_to_id[pvo.split("/")[0].strip().lower()] = pid
+                name_to_id[slugify(pvo)] = pid
+
     for r in range(2, ws_r.max_row + 1):
         a = ws_r.cell(r, 1).value
         b = ws_r.cell(r, 2).value
@@ -837,7 +855,8 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
                 existing_rels.add((b_s, a_s, t_s))
 
     for rel in (new_relations or []):
-        target_id = (rel.get("targetId") or "").strip()
+        raw_target = (rel.get("targetId") or "").strip()
+        target_id = name_to_id.get(raw_target.lower()) or name_to_id.get(slugify(raw_target)) or raw_target
         rtype = (rel.get("type") or "Alliance").strip()
         if rtype in ("Commandement", "Hiérarchie"):
             rtype = "Hiérarchie / Commandement"
