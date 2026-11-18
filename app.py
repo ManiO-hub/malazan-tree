@@ -13,9 +13,12 @@ import re
 import json
 import unicodedata
 import subprocess
+import threading
+import time
+import hashlib
 import urllib.request
 import urllib.parse
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from copy import copy
 import openpyxl
 import tomes
@@ -63,6 +66,70 @@ def run_gdrive_cmd(args, timeout=25):
     else:
         cmd = ["gdrive"] + list(args)
     return subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=timeout)
+
+
+DRIVE_LOCK = threading.RLock()
+DIRTY_FLAG = os.path.join(BASE_DIR, ".drive_dirty")
+_last_pull = 0.0
+_last_db_hash = ""
+
+
+def push_to_drive(timeout=40):
+    """Envoie malazan.xlsx vers le Google Sheet (source de vérité partagée avec l'APK)."""
+    with DRIVE_LOCK:
+        run_gdrive_cmd(
+            ["mutate", "update", DRIVE_SHEET_ID, XLSX_PATH, "--mime-type",
+             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+            timeout=timeout,
+        )
+        if os.path.exists(DIRTY_FLAG):
+            os.remove(DIRTY_FLAG)
+
+
+def pull_from_drive(timeout=40):
+    """
+    Recharge malazan.xlsx depuis le Google Sheet (les ajouts faits depuis l'APK y sont écrits en direct).
+    Si des modifications locales n'ont pas encore été envoyées, on les envoie d'abord pour ne rien écraser.
+    """
+    global _last_pull
+    with DRIVE_LOCK:
+        if os.path.exists(DIRTY_FLAG):
+            push_to_drive(timeout)
+            _last_pull = time.time()
+            return True
+        tmp = XLSX_PATH + ".pull.xlsx"
+        run_gdrive_cmd(["readonly", "export", DRIVE_SHEET_ID, tmp, "--format", "xlsx"], timeout=timeout)
+        wb = openpyxl.load_workbook(tmp)  # validation : le fichier doit être un classeur lisible complet
+        if "Personnages" not in wb.sheetnames or "Relation" not in wb.sheetnames:
+            os.remove(tmp)
+            raise RuntimeError("Classeur exporté incomplet")
+        os.replace(tmp, XLSX_PATH)
+        _last_pull = time.time()
+        return True
+
+
+def db_hash(db):
+    return hashlib.sha1(json.dumps(
+        [db["personnages"], db["relations"], db.get("armiesUnits"), db.get("warrens"), db.get("highHouses")],
+        ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def background_sync_loop(interval=240):
+    """Au démarrage puis toutes les 4 min : relit le Google Sheet et, si la base a changé
+    (ex. ajout fait depuis l'APK), met à jour index.html / GitHub Pages."""
+    global _last_db_hash
+    first = True
+    while True:
+        try:
+            pull_from_drive()
+            h = db_hash(load_database())
+            if first or h != _last_db_hash:
+                sync_html_and_git_push(sync_drive=False)
+                _last_db_hash = h
+            first = False
+        except Exception as e:
+            print("[sync] Échec de la synchro Drive :", str(getattr(e, "stderr", "") or e).strip()[:200])
+        time.sleep(interval)
 
 
 def load_translations():
@@ -757,6 +824,11 @@ def load_database():
 
 
 def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
+    if sync_drive:
+        try:
+            pull_from_drive()  # récupère d'abord les modifs faites ailleurs (APK, Google Sheet)
+        except Exception:
+            pass
     wb = openpyxl.load_workbook(XLSX_PATH)
     ws_p = wb["Personnages"]
 
@@ -872,19 +944,17 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
                 existing_rels.add((target_id, cid, rtype))
 
     wb.save(XLSX_PATH)
+    open(DIRTY_FLAG, "w").close()  # modifications locales à envoyer au Sheet
     sync_html_and_git_push(sync_drive=sync_drive)
 
     drive_status = "Sauvegardé localement dans malazan.xlsx"
     if sync_drive:
         try:
-            run_gdrive_cmd(
-                ["mutate", "update", DRIVE_SHEET_ID, XLSX_PATH, "--mime-type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
-                timeout=25
-            )
+            push_to_drive()
             drive_status = "Synchronisé avec succès sur Google Sheets & GitHub !"
         except Exception as e:
             err_msg = getattr(e, "stderr", "") or str(e)
-            drive_status = f"Sauvegardé localement (erreur sync Drive: {err_msg.strip()})"
+            drive_status = f"Sauvegardé localement (erreur sync Drive: {err_msg.strip()}) — renvoi automatique au prochain cycle"
     return drive_status
 
 
@@ -916,7 +986,7 @@ def sync_html_and_git_push(sync_drive=True):
                     f.write(html)
         if os.path.exists(os.path.join(BASE_DIR, ".git")):
             subprocess.Popen(
-                ["bash", "-c", "git add malazan.xlsx index.html Index.html translations.json tomes.py app.py && git commit -m 'Auto-sync Malazan database' && git push"],
+                ["bash", "-c", "git add malazan.xlsx index.html Index.html translations.json tomes.py app.py sw.js version.json portraits && git commit -m 'Auto-sync Malazan database' && git push"],
                 cwd=BASE_DIR, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
     except Exception:
@@ -1025,10 +1095,7 @@ class MalazanHandler(BaseHTTPRequestHandler):
             })
         elif parsed.path == "/api/pull-drive":
             try:
-                run_gdrive_cmd(
-                    ["readonly", "export", DRIVE_SHEET_ID, XLSX_PATH, "--format", "xlsx"],
-                    timeout=25
-                )
+                pull_from_drive()
                 sync_html_and_git_push(sync_drive=False)
                 self._send_json({"ok": True, "status": "Base rechargée depuis Google Drive et synchronisée sur GitHub !", "data": load_database()})
             except Exception as e:
@@ -1040,6 +1107,7 @@ class MalazanHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8765"))
-    server = HTTPServer(("0.0.0.0", port), MalazanHandler)
+    threading.Thread(target=background_sync_loop, daemon=True).start()
+    server = ThreadingHTTPServer(("0.0.0.0", port), MalazanHandler)
     print(f"Serveur Malazan démarré sur http://localhost:{port} (et sur le réseau local)")
     server.serve_forever()

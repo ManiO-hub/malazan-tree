@@ -1,8 +1,14 @@
 name: Build Android APK
 
+# L'APK n'est qu'une coque : le contenu (code + base) est rechargé depuis GitHub Pages à chaque démarrage.
+# On ne reconstruit donc l'APK que lorsque la coque native change (version.json / ce workflow / l'icône).
 on:
   push:
     branches: [ main ]
+    paths:
+      - ".github/workflows/build-apk.yml"
+      - "version.json"
+      - "icon-512.png"
   workflow_dispatch:
 
 permissions:
@@ -22,12 +28,21 @@ jobs:
           java-version: '17'
 
       - name: Generate Android project & build signed APK
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
           mkdir -p android-app/app/src/main/java/com/manio/malazantree
           mkdir -p android-app/app/src/main/res/drawable
           mkdir -p android-app/app/src/main/res/mipmap-xxxhdpi
           mkdir -p android-app/app/src/main/assets
+
+          APK_CODE=$(python3 -c "import json;print(json.load(open('version.json'))['apkVersionCode'])")
+          APK_NAME=$(python3 -c "import json;print(json.load(open('version.json'))['apkVersionName'])")
+          echo "APK versionCode=$APK_CODE versionName=$APK_NAME"
+          echo "$APK_CODE" > android-app/.vcode
+          echo "$APK_NAME" > android-app/.vname
 
           cp icon-512.png android-app/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           cp index.html android-app/app/src/main/assets/index.html
@@ -66,16 +81,16 @@ jobs:
                   applicationId "com.manio.malazantree"
                   minSdk 24
                   targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
+                  versionCode Integer.parseInt(file("../.vcode").text.trim())
+                  versionName file("../.vname").text.trim()
               }
 
               signingConfigs {
                   release {
                       storeFile file("release.keystore")
-                      storePassword "malazanpass"
+                      storePassword System.getenv("KS_PASS")
                       keyAlias "malazan"
-                      keyPassword "malazanpass"
+                      keyPassword System.getenv("KS_PASS")
                   }
               }
 
@@ -88,12 +103,8 @@ jobs:
           }
           EOF
 
-          keytool -genkeypair -v \
-            -keystore android-app/app/release.keystore \
-            -alias malazan \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass malazanpass -keypass malazanpass \
-            -dname "CN=Manu Aubier, OU=Malazan, O=ManiO, L=Paris, S=IDF, C=FR"
+          # Clé de signature PERSISTANTE (secrets GitHub) : indispensable pour que Android accepte les mises à jour par-dessus l'ancienne version
+          echo "$KS_B64" | base64 -d > android-app/app/release.keystore
 
           cat << 'EOF' > android-app/app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
@@ -124,18 +135,55 @@ jobs:
           package com.manio.malazantree;
 
           import android.app.Activity;
-          import android.net.ConnectivityManager;
-          import android.net.NetworkInfo;
+          import android.content.Intent;
+          import android.content.pm.PackageInfo;
+          import android.graphics.Color;
+          import android.net.Uri;
           import android.os.Bundle;
           import android.view.Window;
+          import android.webkit.JavascriptInterface;
           import android.webkit.WebChromeClient;
+          import android.webkit.WebResourceRequest;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
-          import android.graphics.Color;
 
           public class MainActivity extends Activity {
+              private static final String SITE = "https://manio-hub.github.io/malazan-tree/";
               private WebView webView;
+
+              // Pont JavaScript : la page connaît la version de la coque native et peut ouvrir un lien externe (téléchargement de l'APK)
+              public class Bridge {
+                  @JavascriptInterface
+                  public int getVersionCode() {
+                      try {
+                          PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+                          return pi.versionCode;
+                      } catch (Exception e) {
+                          return 0;
+                      }
+                  }
+
+                  @JavascriptInterface
+                  public String getVersionName() {
+                      try {
+                          PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+                          return pi.versionName;
+                      } catch (Exception e) {
+                          return "?";
+                      }
+                  }
+
+                  @JavascriptInterface
+                  public void openUrl(String url) {
+                      try {
+                          Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                          i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                          startActivity(i);
+                      } catch (Exception ignored) {
+                      }
+                  }
+              }
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
@@ -154,22 +202,36 @@ jobs:
                   settings.setAllowContentAccess(true);
                   settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
+                  webView.addJavascriptInterface(new Bridge(), "AndroidBridge");
                   webView.setBackgroundColor(Color.parseColor("#111318"));
                   webView.setWebChromeClient(new WebChromeClient());
                   webView.setWebViewClient(new WebViewClient() {
                       @Override
+                      public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                          Uri u = request.getUrl();
+                          String host = u.getHost() == null ? "" : u.getHost();
+                          if ("file".equals(u.getScheme()) || host.endsWith("manio-hub.github.io")) {
+                              return false;
+                          }
+                          try {
+                              startActivity(new Intent(Intent.ACTION_VIEW, u));
+                          } catch (Exception ignored) {
+                          }
+                          return true;
+                      }
+
+                      // Erreur de la page principale uniquement (jamais d'une simple image) : copie embarquée en dernier recours
+                      @Override
                       public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                          view.loadUrl("file:///android_asset/index.html");
+                          if (failingUrl != null && failingUrl.startsWith(SITE)) {
+                              view.loadUrl("file:///android_asset/index.html");
+                          }
                       }
                   });
 
-                  ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
-                  NetworkInfo ni = cm != null ? cm.getActiveNetworkInfo() : null;
-                  if (ni != null && ni.isConnected()) {
-                      webView.loadUrl("https://manio-hub.github.io/malazan-tree/?v=" + System.currentTimeMillis());
-                  } else {
-                      webView.loadUrl("file:///android_asset/index.html");
-                  }
+                  // À CHAQUE démarrage : dernière version du logiciel + de la base (paramètre unique = jamais de cache périmé).
+                  // Hors-ligne, le Service Worker de la page sert la dernière version mémorisée.
+                  webView.loadUrl(SITE + "?v=" + System.currentTimeMillis());
               }
 
               @Override

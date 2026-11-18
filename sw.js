@@ -1,4 +1,4 @@
-const CACHE_NAME = "malazan-tree-v12";
+const CACHE_NAME = "malazan-tree-v13";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -13,15 +13,28 @@ self.addEventListener("activate", e => {
   );
 });
 
+// Réseau d'abord (toujours la dernière version du code à chaque démarrage), cache en secours hors-ligne.
+// Les pages sont mises en cache SANS leur paramètre ?v=… pour ne pas faire grossir le cache à chaque démarrage.
 self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET" || !e.request.url.startsWith(self.location.origin) || e.request.url.includes("/api/")) return;
+  const req = e.request;
+  const url = new URL(req.url);
+  if (req.method !== "GET" || url.origin !== self.location.origin || url.pathname.includes("/api/")) return;
+
+  const isPage = req.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith("/index.html");
+  const key = isPage ? new Request(url.origin + url.pathname) : req;
+  const network = isPage ? fetch(url.href, { cache: "no-cache" }) : fetch(req);
+
   e.respondWith(
-    fetch(e.request)
+    network
       .then(res => {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+        if (res && res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then(c => c.put(key, clone));
+        }
         return res;
       })
-      .catch(() => caches.match(e.request))
+      .catch(() =>
+        caches.match(key, { ignoreSearch: true }).then(r => r || caches.match("./index.html", { ignoreSearch: true }))
+      )
   );
 });

@@ -748,6 +748,24 @@
     .form-grid { grid-template-columns: 1fr; }
     .rel-row { grid-template-columns: 1fr 1fr; }
   }
+
+  /* ---- Synchronisation en ligne (Google Sheets via Apps Script) ---- */
+  #btnSyncCfg { display: none; }
+  #btnSyncCfg .sync-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-left:5px; background:#94a3b8; vertical-align:middle; }
+  #btnSyncCfg.ok .sync-dot { background:#10b981; box-shadow:0 0 6px #10b981; }
+  #btnSyncCfg.err .sync-dot { background:#ef4444; box-shadow:0 0 6px #ef4444; }
+  #btnSyncCfg.busy .sync-dot { background:#f59e0b; animation: syncPulse 0.9s infinite; }
+  @keyframes syncPulse { 50% { opacity: .25; } }
+  #toast {
+    position: fixed; left: 50%; bottom: 74px; transform: translateX(-50%) translateY(20px);
+    background: #1f2937; color: #f3f4f6; border: 1px solid #374151; border-radius: 10px;
+    padding: 10px 14px; font-size: 13px; max-width: min(92vw, 520px); z-index: 99999;
+    box-shadow: 0 8px 28px rgba(0,0,0,.55); opacity: 0; pointer-events: none;
+    transition: opacity .25s, transform .25s; display:flex; gap:10px; align-items:center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+  #toast.warn { border-color:#f59e0b; } #toast.error { border-color:#ef4444; } #toast.success { border-color:#10b981; }
+  #toast button { background:#3b82f6; border:none; color:#fff; padding:5px 10px; border-radius:6px; font-weight:600; cursor:pointer; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -771,6 +789,7 @@
     <button id="btnOpenCodex" class="btn-codex" type="button">🛡️ Codex Armées & Garennes</button>
     <button id="btnOpenAdd" class="btn-primary" type="button">+ Ajouter via le Net</button>
     <button id="btnPullDrive" type="button" title="Recharger les modifications faites dans Google Sheets">↻ Sync Sheets</button>
+    <button id="btnSyncCfg" type="button" title="Synchronisation en ligne avec le Google Sheet (APK / PWA)">☁️ Sync en ligne<span class="sync-dot"></span></button>
     <a id="btnDownloadApk" href="https://github.com/ManiO-hub/malazan-tree/releases/download/v1.0-apk/malazan-tree.apk" style="background:#10b981;border-color:#059669;color:#fff" title="Télécharger l'application Android (.apk)">📲 APK</a>
     <span id="stats"></span>
   </div>
@@ -1013,6 +1032,43 @@
     </div>
   </div>
 </div>
+
+<div id="syncOverlay" class="modal-overlay">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <h3>☁️ Synchronisation en ligne</h3>
+      <button id="btnCloseSync" type="button" class="btn-close" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      Une fois configurée, <b>toute modification faite ici (ajout de personnage, liens…) est écrite directement dans le Google Sheet</b>,
+      et chaque démarrage relit le Sheet : APK, appli PC et Google Sheet restent identiques.
+    </div>
+    <div id="syncStatusBox" style="font-size:12.5px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);margin-bottom:10px"></div>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-group">
+        <label>URL du déploiement Apps Script (se termine par /exec)</label>
+        <input id="syncUrl" type="text" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label>Jeton de synchronisation (SYNC_TOKEN)</label>
+        <input id="syncToken" type="password" placeholder="Le mot de passe défini dans Code.gs" autocomplete="off" />
+      </div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5">
+      Astuce : vous pouvez coller « URL|JETON » d'un seul bloc dans le premier champ.
+      Installation (1 fois) : Sheet → Extensions → Apps Script → coller <code>Code.gs</code> → Déployer en « Application Web » (accès : tout le monde).
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
+      <button id="btnSyncDisable" type="button" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;cursor:pointer">Désactiver</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btnSyncNow" type="button" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;cursor:pointer">↻ Synchroniser maintenant</button>
+        <button id="btnSyncSave" type="button" style="background:var(--success);border:none;color:#fff;padding:8px 14px;border-radius:6px;font-weight:600;cursor:pointer">Tester &amp; Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"><span id="toastMsg"></span><button id="toastBtn" type="button" style="display:none"></button></div>
 
 <datalist id="persoDatalist"></datalist>
 
@@ -3861,6 +3917,8 @@ document.getElementById("btnSaveChar").addEventListener("click", async () => {
   btn.disabled = true;
   btn.textContent = "⏳ Sauvegarde & Sync…";
 
+  if (!charData.id) charData.id = slugifyId(charData.nom);
+
   try {
     let updatedData;
     if (IS_GAS) {
@@ -3868,29 +3926,22 @@ document.getElementById("btnSaveChar").addEventListener("click", async () => {
         google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).saveCharacter({ character: charData, relations: rels })
       );
     } else {
-      try {
-        const res = await fetch("/api/add", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ character: charData, relations: rels, syncDrive })
-        });
-        if (!res.ok) throw new Error("Mode autonome");
-        const out = await res.json();
-        updatedData = out.data;
-      } catch (_) {
-        const idx = DATA.personnages.findIndex(p => p.id === charData.id);
-        if (idx >= 0) DATA.personnages[idx] = charData;
-        else DATA.personnages.push(charData);
-        rels.forEach(r => {
-          const exists = DATA.relations.some(ex =>
-            ((ex.a === charData.id && ex.b === r.targetId) || (ex.b === charData.id && ex.a === r.targetId)) && ex.type === r.type
-          );
-          if (!exists) {
-            DATA.relations.push({ a: charData.id, b: r.targetId, type: r.type, label: r.label });
-          }
-        });
-        localStorage.setItem("MALAZAN_CUSTOM_DATA", JSON.stringify(DATA));
-        updatedData = DATA;
+      let serverOk = false;
+      if (SERVER_MODE) {
+        try {
+          const res = await fetch("/api/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ character: charData, relations: rels, syncDrive })
+          });
+          if (!res.ok) throw new Error("Mode autonome");
+          const out = await res.json();
+          updatedData = out.data;
+          serverOk = true;
+        } catch (_) {}
+      }
+      if (!serverOk) {
+        updatedData = await saveStandalone({ character: charData, relations: rels });
       }
     }
     rebuildGraph(updatedData);
@@ -3914,6 +3965,9 @@ document.getElementById("btnPullDrive").addEventListener("click", async () => {
         google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getDatabase()
       );
       rebuildGraph(d);
+    } else if (!SERVER_MODE && getSyncCfg()) {
+      const ok = await syncFromRemote({ manual: true });
+      if (!ok) throw new Error("Synchronisation en ligne impossible (voir ☁️ Sync en ligne).");
     } else if (location.hostname.endsWith("github.io")) {
       const freshHtml = await fetch(location.pathname + "?t=" + Date.now(), { cache: "no-store" }).then(r => r.text());
       const m = freshHtml.match(/window\.INITIAL_DATA\s*=\s*(\{.*?\});\s*\nconst IS_GAS/s);
@@ -3990,24 +4044,359 @@ function mergeCustomWithInitial(initialDb) {
         if (!dup) merged.relations.push({ a: cr.a, b: cr.b, type: t, label: cr.label });
       }
     });
-    // Mettre à jour le cache localStorage pour que les portraits locaux portraits/<id>.webp et les nouvelles affectations soient persistés
-    localStorage.setItem("MALAZAN_CUSTOM_DATA", JSON.stringify(merged));
     return merged;
   } catch (_) {
     return initialDb;
   }
 }
 
+/* ============================================================
+   SYNCHRONISATION EN LIGNE (Google Sheet via Apps Script)
+   - Lecture : à chaque démarrage / retour au premier plan / retour du réseau
+   - Écriture : chaque ajout / modification part directement dans le Google Sheet
+   - Hors-ligne : les modifications sont mises en file d'attente puis envoyées au retour du réseau
+   ============================================================ */
+let SERVER_MODE = false; // true quand l'appli est servie par le serveur local app.py (PC)
+const SYNC_CFG_KEY = "MALAZAN_SYNC_CFG";
+const PENDING_KEY = "MALAZAN_PENDING_OPS";
+const REMOTE_CACHE_KEY = "MALAZAN_REMOTE_CACHE";
+const SYNC_PROMPTED_KEY = "MALAZAN_SYNC_PROMPTED";
+const DIRECTED_REL_TYPES = ["Hiérarchie / Commandement", "Filiation", "Allégeance", "Formation", "Protection", "Possession", "Manipulation", "Succession", "Bannissement"];
+let syncInFlight = null;
+let lastSyncAt = 0;
+let lastSyncError = "";
+
+function slugifyId(text) {
+  return String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "perso";
+}
+function readJson(key, fallback) {
+  try { const v = JSON.parse(localStorage.getItem(key) || "null"); return v === null ? fallback : v; } catch (_) { return fallback; }
+}
+function getSyncCfg() {
+  const c = readJson(SYNC_CFG_KEY, null);
+  return c && c.url && c.token ? c : null;
+}
+function getPendingOps() { return readJson(PENDING_KEY, []); }
+function setPendingOps(ops) {
+  if (ops && ops.length) localStorage.setItem(PENDING_KEY, JSON.stringify(ops));
+  else localStorage.removeItem(PENDING_KEY);
+}
+
+let toastTimer = null;
+function showToast(msg, kind = "", actionLabel = "", actionFn = null, ms = 5200) {
+  const t = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = msg;
+  const b = document.getElementById("toastBtn");
+  if (actionLabel && actionFn) {
+    b.style.display = "inline-block";
+    b.textContent = actionLabel;
+    b.onclick = () => { t.classList.remove("show"); actionFn(); };
+  } else {
+    b.style.display = "none";
+  }
+  t.className = "show " + kind;
+  clearTimeout(toastTimer);
+  if (ms > 0) toastTimer = setTimeout(() => t.classList.remove("show"), ms);
+}
+
+function setSyncBadge(state, detail = "") {
+  const btn = document.getElementById("btnSyncCfg");
+  if (!btn) return;
+  btn.classList.remove("ok", "err", "busy");
+  if (state) btn.classList.add(state);
+  btn.title = detail || "Synchronisation en ligne avec le Google Sheet";
+}
+
+function normalizeRelType(t) {
+  return (t === "Commandement" || t === "Hiérarchie") ? "Hiérarchie / Commandement" : (t || "Autre");
+}
+
+// Applique une opération (personnage + liens) sur une copie locale de la base
+function applyOpLocally(db, op) {
+  const c = op && op.character;
+  if (!c || !c.id) return;
+  const i = db.personnages.findIndex(p => p.id === c.id);
+  if (i >= 0) db.personnages[i] = { ...db.personnages[i], ...c };
+  else db.personnages.push({ ...c });
+  (op.relations || []).forEach(r => {
+    const t = normalizeRelType(r.type);
+    const directed = DIRECTED_REL_TYPES.includes(t);
+    const tid = r.targetId;
+    if (!tid || tid === c.id || !db.personnages.some(p => p.id === tid)) return;
+    const dup = db.relations.some(ex => normalizeRelType(ex.type) === t &&
+      ((ex.a === c.id && ex.b === tid) || (!directed && ex.b === c.id && ex.a === tid)));
+    if (!dup) db.relations.push({ a: c.id, b: tid, type: t, label: r.label || t });
+  });
+}
+
+function dbSignature(d) {
+  return JSON.stringify([d.personnages, d.relations, d.highHouses, d.warrens, d.armiesUnits, d.titlesRef]);
+}
+
+async function remoteRequest(cfg, bodyOrNull) {
+  const opts = bodyOrNull
+    ? { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ token: cfg.token, ...bodyOrNull }), redirect: "follow" }
+    : { method: "GET", redirect: "follow", cache: "no-store" };
+  const url = bodyOrNull ? cfg.url : `${cfg.url}${cfg.url.includes("?") ? "&" : "?"}action=data&token=${encodeURIComponent(cfg.token)}&t=${Date.now()}`;
+  const res = await fetch(url, opts);
+  let out;
+  try { out = await res.json(); } catch (_) { throw new Error("Réponse illisible du serveur de synchronisation (URL du déploiement correcte ?)"); }
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
+// Ajouts faits sur cet appareil avant l'activation de la sync (stockage local historique) → à envoyer au Sheet
+function collectLegacyOps(remote) {
+  const custom = readJson("MALAZAN_CUSTOM_DATA", null);
+  if (!custom) return [];
+  const remoteIds = new Set(remote.personnages.map(p => p.id));
+  const bundled = window.INITIAL_DATA || { relations: [] };
+  const relKey = r => `${r.a}::${r.b}::${normalizeRelType(r.type)}`;
+  const known = new Set([...remote.relations, ...(bundled.relations || [])].map(relKey));
+  const newChars = (custom.personnages || []).filter(p => p && p.id && !remoteIds.has(p.id));
+  const newIds = new Set(newChars.map(p => p.id));
+  const allIds = new Set([...remoteIds, ...newIds]);
+  const byId = Object.fromEntries([...remote.personnages, ...newChars].map(p => [p.id, p]));
+  const ops = [];
+  newChars.forEach(c => ops.push({ character: c, relations: [] }));
+  (custom.relations || []).forEach(r => {
+    if (!r || !allIds.has(r.a) || !allIds.has(r.b) || known.has(relKey(r))) return;
+    if (!newIds.has(r.a) && !newIds.has(r.b) && !r.label) return;
+    known.add(relKey(r));
+    const owner = newIds.has(r.a) ? r.a : (newIds.has(r.b) && !DIRECTED_REL_TYPES.includes(normalizeRelType(r.type)) ? r.b : r.a);
+    const target = owner === r.a ? r.b : r.a;
+    let op = ops.find(o => o.character.id === owner);
+    if (!op) { op = { character: byId[owner], relations: [] }; ops.push(op); }
+    op.relations.push({ targetId: target, type: normalizeRelType(r.type), label: r.label || "" });
+  });
+  return ops;
+}
+
+async function syncFromRemote(opts = {}) {
+  const cfg = getSyncCfg();
+  if (!cfg || SERVER_MODE || IS_GAS) return false;
+  if (syncInFlight) return syncInFlight;
+  syncInFlight = (async () => {
+    setSyncBadge("busy", "Synchronisation en cours…");
+    try {
+      let data = await remoteRequest(cfg, null);
+      const pending = getPendingOps();
+      const legacy = collectLegacyOps(data);
+      const ops = [...pending, ...legacy];
+      if (ops.length) {
+        const out = await remoteRequest(cfg, { action: "saveBatch", ops });
+        data = out.data;
+        setPendingOps([]);
+        localStorage.removeItem("MALAZAN_CUSTOM_DATA");
+        showToast(`☁️ ${out.saved ?? ops.length} ajout(s) de cet appareil envoyé(s) au Google Sheet.`, "success");
+      }
+      localStorage.setItem(REMOTE_CACHE_KEY, JSON.stringify(data));
+      lastSyncAt = Date.now();
+      lastSyncError = "";
+      if (!DATA || dbSignature(data) !== dbSignature(DATA)) {
+        window.INITIAL_DATA = window.INITIAL_DATA || data;
+        const sel = network.getSelectedNodes();
+        rebuildGraph(data);
+        if (sel.length && persoById[sel[0]]) selectCharacter(sel[0]);
+        if (opts.manual || opts.announce) showToast("☁️ Base mise à jour depuis le Google Sheet.", "success");
+      } else if (opts.manual) {
+        showToast("☁️ Déjà à jour avec le Google Sheet.", "success");
+      }
+      setSyncBadge("ok", "Synchronisé avec le Google Sheet à " + new Date().toLocaleTimeString("fr-FR"));
+      return true;
+    } catch (err) {
+      lastSyncError = err.message || String(err);
+      setSyncBadge("err", "Sync impossible : " + lastSyncError);
+      if (opts.manual) showToast("Sync impossible : " + lastSyncError, "error", "Réglages", openSyncDialog, 8000);
+      return false;
+    } finally {
+      syncInFlight = null;
+      refreshSyncDialog();
+    }
+  })();
+  return syncInFlight;
+}
+
+// Enregistrement en mode autonome (APK / PWA) : écriture directe dans le Google Sheet, avec file d'attente hors-ligne
+async function saveStandalone(op) {
+  const cfg = getSyncCfg();
+  if (!cfg) {
+    // Pas de sync configurée : sauvegarde locale uniquement (et rappel)
+    const idx = DATA.personnages.findIndex(p => p.id === op.character.id);
+    if (idx >= 0) DATA.personnages[idx] = op.character; else DATA.personnages.push(op.character);
+    applyOpLocally(DATA, { character: op.character, relations: op.relations });
+    localStorage.setItem("MALAZAN_CUSTOM_DATA", JSON.stringify(DATA));
+    showToast("Enregistré UNIQUEMENT sur cet appareil. Activez ☁️ Sync en ligne pour l'envoyer au Google Sheet.", "warn", "Activer", openSyncDialog, 9000);
+    return DATA;
+  }
+  // Première utilisation : récupérer d'abord la base en ligne (et y envoyer les ajouts déjà faits sur l'appareil)
+  if (!readJson(REMOTE_CACHE_KEY, null)) {
+    await syncFromRemote();
+  }
+  // 1. Affichage immédiat (optimiste)
+  const local = JSON.parse(JSON.stringify(DATA));
+  applyOpLocally(local, op);
+  try {
+    setSyncBadge("busy", "Envoi au Google Sheet…");
+    const pending = getPendingOps();
+    const legacy = collectLegacyOps(DATA);
+    const queue = [...pending, ...legacy];
+    const body = queue.length
+      ? { action: "saveBatch", ops: [...queue, op] }
+      : { action: "save", character: op.character, relations: op.relations };
+    const out = await remoteRequest(cfg, body);
+    setPendingOps([]);
+    if (legacy.length) localStorage.removeItem("MALAZAN_CUSTOM_DATA");
+    localStorage.setItem(REMOTE_CACHE_KEY, JSON.stringify(out.data));
+    lastSyncAt = Date.now();
+    setSyncBadge("ok", "Synchronisé avec le Google Sheet à " + new Date().toLocaleTimeString("fr-FR"));
+    showToast("☁️ Enregistré dans le Google Sheet.", "success", "", null, 2800);
+    return out.data;
+  } catch (err) {
+    const pend = getPendingOps();
+    pend.push(op);
+    setPendingOps(pend);
+    localStorage.setItem(REMOTE_CACHE_KEY, JSON.stringify(local));
+    setSyncBadge("err", "Envoi différé : " + err.message);
+    showToast("Enregistré sur l'appareil, envoi au Sheet différé (" + (err.message || "réseau") + "). Réessai automatique.", "warn", "Réglages", openSyncDialog, 8000);
+    return local;
+  }
+}
+
+/* ---------- Boîte de dialogue de configuration ---------- */
+const syncOverlay = document.getElementById("syncOverlay");
+function refreshSyncDialog() {
+  const box = document.getElementById("syncStatusBox");
+  if (!box) return;
+  const cfg = getSyncCfg();
+  const pend = getPendingOps().length;
+  const legacy = (readJson("MALAZAN_CUSTOM_DATA", { personnages: [] }).personnages || []).length;
+  const nativeV = window.AndroidBridge ? ` · APK v${window.AndroidBridge.getVersionName()}` : "";
+  let html;
+  if (!cfg) html = "⚪ <b>Non configurée</b> — les modifications restent sur cet appareil.";
+  else if (lastSyncError) html = `🔴 <b>Erreur</b> : ${esc(lastSyncError)}`;
+  else if (lastSyncAt) html = `🟢 <b>Connectée</b> — dernière synchro à ${new Date(lastSyncAt).toLocaleTimeString("fr-FR")}`;
+  else html = "🟡 <b>Configurée</b> — pas encore synchronisée.";
+  if (pend) html += `<br>⏳ ${pend} modification(s) en attente d'envoi.`;
+  if (legacy && !cfg) html += `<br>📱 ${legacy} personnage(s) ajouté(s) sur cet appareil seront envoyés au Sheet dès l'activation.`;
+  html += `<br><span style="color:var(--muted)">${esc(location.host || "hors-ligne")}${nativeV}</span>`;
+  box.innerHTML = html;
+  const cur = cfg || {};
+  const u = document.getElementById("syncUrl"), t = document.getElementById("syncToken");
+  if (document.activeElement !== u && document.activeElement !== t) {
+    u.value = cur.url || u.value || "";
+    t.value = cur.token || t.value || "";
+  }
+}
+function openSyncDialog() {
+  refreshSyncDialog();
+  syncOverlay.classList.add("open");
+}
+document.getElementById("btnSyncCfg").addEventListener("click", openSyncDialog);
+document.getElementById("btnCloseSync").addEventListener("click", () => syncOverlay.classList.remove("open"));
+document.getElementById("btnSyncNow").addEventListener("click", async () => {
+  if (!getSyncCfg()) { showToast("Renseignez d'abord l'URL et le jeton.", "warn"); return; }
+  await syncFromRemote({ manual: true });
+});
+document.getElementById("btnSyncDisable").addEventListener("click", () => {
+  localStorage.removeItem(SYNC_CFG_KEY);
+  lastSyncError = ""; lastSyncAt = 0;
+  setSyncBadge("", "");
+  refreshSyncDialog();
+  showToast("Synchronisation en ligne désactivée.", "warn");
+});
+document.getElementById("btnSyncSave").addEventListener("click", async () => {
+  let url = document.getElementById("syncUrl").value.trim();
+  let token = document.getElementById("syncToken").value.trim();
+  if (url.includes("|")) { const [u, t] = url.split("|"); url = u.trim(); token = (t || token).trim(); }
+  if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) {
+    showToast("L'URL doit être celle du déploiement Apps Script (https://script.google.com/macros/s/…/exec).", "error", "", null, 7000);
+    return;
+  }
+  if (!token) { showToast("Le jeton de synchronisation est obligatoire.", "error"); return; }
+  document.getElementById("syncUrl").value = url;
+  document.getElementById("syncToken").value = token;
+  const btn = document.getElementById("btnSyncSave");
+  btn.disabled = true; btn.textContent = "⏳ Test…";
+  try {
+    await remoteRequest({ url, token }, null); // test de lecture
+    localStorage.setItem(SYNC_CFG_KEY, JSON.stringify({ url, token }));
+    localStorage.setItem(SYNC_PROMPTED_KEY, "1");
+    lastSyncError = "";
+    await syncFromRemote({ manual: true, announce: true });
+    showToast("☁️ Synchronisation en ligne activée !", "success");
+    syncOverlay.classList.remove("open");
+  } catch (err) {
+    showToast("Connexion refusée : " + err.message, "error", "", null, 8000);
+  } finally {
+    btn.disabled = false; btn.textContent = "Tester & Enregistrer";
+    refreshSyncDialog();
+  }
+});
+
+/* ---------- Mise à jour de l'APK natif (coque Android) ---------- */
+async function checkNativeUpdate() {
+  if (!window.AndroidBridge) return;
+  try {
+    const nativeCode = Number(window.AndroidBridge.getVersionCode());
+    const v = await fetch("version.json?t=" + Date.now(), { cache: "no-store" }).then(r => r.json());
+    if (v && Number(v.apkVersionCode) > nativeCode) {
+      showToast(`Nouvelle version de l'APK disponible (v${v.apkVersionName || v.apkVersionCode}).`, "warn", "Télécharger", () => window.AndroidBridge.openUrl(v.apkUrl), 0);
+    }
+  } catch (_) {}
+}
+
+/* ---------- Démarrage ---------- */
+function loadStandaloneBase() {
+  let base = readJson(REMOTE_CACHE_KEY, null);
+  if (!base || !base.personnages) base = mergeCustomWithInitial(window.INITIAL_DATA);
+  base = JSON.parse(JSON.stringify(base));
+  getPendingOps().forEach(op => applyOpLocally(base, op));
+  return base;
+}
+
+function startStandalone() {
+  document.getElementById("btnSyncCfg").style.display = "inline-block";
+  rebuildGraph(loadStandaloneBase());
+  if (getSyncCfg()) {
+    setSyncBadge("busy", "Synchronisation en cours…");
+    syncFromRemote({ announce: true });
+  } else {
+    setSyncBadge("", "Synchronisation en ligne non configurée");
+    if (!localStorage.getItem(SYNC_PROMPTED_KEY)) {
+      localStorage.setItem(SYNC_PROMPTED_KEY, "1");
+      setTimeout(openSyncDialog, 1200);
+    }
+  }
+  checkNativeUpdate();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && Date.now() - lastSyncAt > 45000) syncFromRemote({ announce: true });
+  });
+  window.addEventListener("online", () => syncFromRemote({ announce: true }));
+}
+
 if (IS_GAS) {
   rebuildGraph(window.INITIAL_DATA);
   google.script.run.withSuccessHandler(d => rebuildGraph(d)).getDatabase();
 } else {
-  fetch("/api/data")
+  fetch("/api/data", { cache: "no-store" })
     .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-    .then(d => rebuildGraph(d))
-    .catch(() => {
-      rebuildGraph(mergeCustomWithInitial(window.INITIAL_DATA));
-    });
+    .then(d => {
+      SERVER_MODE = true;
+      rebuildGraph(d);
+      // Appli PC : le serveur local relit le Google Sheet en arrière-plan ; on rafraîchit l'affichage quand la base change
+      const refreshFromServer = () => fetch("/api/data", { cache: "no-store" }).then(r => r.json()).then(nd => {
+        if (dbSignature(nd) !== dbSignature(DATA)) {
+          const sel = network.getSelectedNodes();
+          rebuildGraph(nd);
+          if (sel.length && persoById[sel[0]]) selectCharacter(sel[0]);
+          showToast("Base mise à jour depuis le Google Sheet.", "success");
+        }
+      }).catch(() => {});
+      setInterval(refreshFromServer, 120000);
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshFromServer(); });
+    })
+    .catch(() => startStandalone());
 }
 </script>
 </body>

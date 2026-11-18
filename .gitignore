@@ -1,2 +1,6 @@
 __pycache__/
 *.apk
+Code.personal.gs
+.drive_dirty
+*.keystore
+*.pull.xlsx

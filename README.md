@@ -14,3 +14,7 @@ Application web interactive (et PWA / APK Android) permettant de visualiser, fil
 - **Application Web (GitHub Pages / PWA)** : **[https://manio-hub.github.io/malazan-tree/](https://manio-hub.github.io/malazan-tree/)**
 - **Application Android (`.apk`)** : **[Télécharger malazan-tree.apk](https://github.com/ManiO-hub/malazan-tree/releases/download/v1.0-apk/malazan-tree.apk)**
 - **Base de données Google Sheets (Drive)** : `Malazan charater tree` (dans le dossier Drive `Malazan Character Tree`, composée des 6 onglets : `Personnages`, `Relation`, `Factions`, `Maisons & Garennes`, `Armées & Unités`, `Légende`).
+
+## ☁️ Synchronisation en ligne (APK · PWA · PC · Google Sheet)
+
+La base de référence est le Google Sheet. L'APK et la PWA lisent le Sheet à chaque démarrage et y écrivent directement les ajouts de personnages et de liens (via `Code.gs`, Google Apps Script — installation unique décrite en tête du fichier, puis bouton **☁️ Sync en ligne** dans l'appli). L'appli PC (`start.sh`) relit le Sheet toutes les 4 minutes.

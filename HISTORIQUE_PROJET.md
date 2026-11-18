@@ -63,4 +63,13 @@ Ce document résume l'ensemble des décisions, des sources de référence, de l'
 - `malazan.xlsx` : Classeur Excel de référence à 6 onglets (`Personnages`, `Relation`, `Factions`, `Maisons & Garennes`, `Armées & Unités`, `Légende`) synchronisé avec Google Sheets.
 - `tomes.py`, `dp_cache.json`, `translations.json` : Détection des tomes, extraction des affectations par tome via les *Dramatis Personae*, et table des 712 correspondances VF ↔ VO.
 - `manifest.json`, `sw.js`, `icon.svg`, `icon-192.png`, `icon-512.png` : Ressources PWA & icônes.
-- `.github/workflows/build-apk.yml` : Pipeline CI/CD compilant `malazan-tree.apk` à chaque push sur `main`.
+- `.github/workflows/build-apk.yml` : Pipeline CI/CD compilant `malazan-tree.apk` (coque Android native, signée avec une clé **persistante** stockée dans les secrets GitHub `ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASS` ; sauvegarde locale : `~/.malazan-signing/`). Déclenché uniquement quand `version.json`, l'icône ou le workflow changent.
+- `version.json` : version de la coque native (`apkVersionCode`). Incrémenter pour publier un nouvel APK ; l'appli prévient l'utilisateur dans l'APK (bouton « Télécharger »).
+- `Code.gs` : passerelle **Google Apps Script** (lecture/écriture du Google Sheet depuis l'APK/PWA). `Code.personal.gs` (ignoré par Git) = copie avec le jeton secret `SYNC_TOKEN`.
+
+## 4. Synchronisation en ligne (v13)
+
+- **Source de vérité = le Google Sheet.** APK, PWA, appli PC et Sheet partagent la même base.
+- **APK / PWA** : au démarrage (et au retour au premier plan / retour du réseau), la page relit le Sheet via l'Apps Script (`doGet ?action=data`), puis affiche. Chaque ajout/modification est envoyé directement dans le Sheet (`doPost`). Hors-ligne : file d'attente locale (`MALAZAN_PENDING_OPS`) renvoyée dès que possible. Config (URL + jeton) saisie une fois dans « ☁️ Sync en ligne » (`MALAZAN_SYNC_CFG` en localStorage, jamais dans Git). Les ajouts faits avant l'activation (`MALAZAN_CUSTOM_DATA`) sont automatiquement envoyés au Sheet.
+- **Mise à jour du logiciel** : l'APK charge `https://manio-hub.github.io/malazan-tree/?v=<horodatage>` à chaque démarrage (le Service Worker `sw.js` sert la dernière version mémorisée hors-ligne).
+- **Appli PC (`app.py`)** : relit le Sheet au démarrage puis toutes les 4 min (`background_sync_loop`), renvoie les modifs locales (`.drive_dirty`), et republie `index.html` sur GitHub Pages quand la base change.
