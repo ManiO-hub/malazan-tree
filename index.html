@@ -94,6 +94,11 @@
     border: 1px solid var(--border);
     color: var(--text);
   }
+  .tag-gold {
+    background: rgba(245, 158, 11, 0.2);
+    border: 1px solid #f59e0b;
+    color: #fde68a;
+  }
   .focus-bar {
     display: flex;
     gap: 6px;
@@ -227,64 +232,168 @@
     white-space: nowrap;
   }
 
-  /* Top filter bar */
-  #toolbar {
+  /* Barre d'actions compacte en haut + Tiroir de filtres repliable */
+  #topWrap {
     position: absolute;
     top: 12px;
     left: 12px;
     right: 12px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    pointer-events: none;
+  }
+  #toolbar {
+    pointer-events: auto;
     background: rgba(25, 29, 36, 0.94);
-    backdrop-filter: blur(8px);
-    padding: 8px 11px;
-    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    padding: 7px 11px;
+    border-radius: 24px;
     font-size: 12px;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
     border: 1px solid var(--border);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-    z-index: 15;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+    max-width: 100%;
   }
-  #toolbar select, #toolbar button {
-    background: #11141a;
+  #toolbar button, #toolbar a {
+    background: var(--card);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 11.5px;
+    padding: 6px 11px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
   }
-  #toolbar select { max-width: 162px; }
-  #toolbar select.spoiler-select {
-    border-color: rgba(245, 158, 11, 0.55);
-    color: #fde68a;
-  }
-  #toolbar button { cursor: pointer; background: var(--card); font-weight: 500; }
   #toolbar button:hover { background: #2d3442; }
   #toolbar button.btn-primary {
     background: var(--accent);
     border-color: #2563eb;
     color: #fff;
-    font-weight: 600;
   }
   #toolbar button.btn-primary:hover { background: #2563eb; }
+  #toolbar button.btn-filter.active {
+    background: rgba(59, 130, 246, 0.25);
+    border-color: #3b82f6;
+    color: #93c5fd;
+  }
+  #toolbar button.btn-layout {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: #10b981;
+    color: #6ee7b7;
+  }
+  #toolbar button.btn-divine {
+    background: rgba(245, 158, 11, 0.16);
+    border-color: rgba(245, 158, 11, 0.55);
+    color: #fde68a;
+  }
+  #toolbar button.btn-divine.active {
+    background: #f59e0b;
+    border-color: #fbbf24;
+    color: #111318;
+  }
   #toolbar button.btn-codex {
     background: rgba(142, 68, 173, 0.25);
     border-color: #8e44ad;
     color: #e9d5ff;
-    font-weight: 600;
   }
   #toolbar button.btn-codex:hover { background: rgba(142, 68, 173, 0.45); }
-  #stats { color: var(--muted); font-size: 11.5px; margin-left: auto; white-space: nowrap; }
+  #stats { color: var(--muted); font-size: 11.5px; padding: 0 6px; white-space: nowrap; }
+
+  /* Panneau déroulant du bouton Filtres */
+  #filterDrawer {
+    pointer-events: auto;
+    display: none;
+    background: rgba(25, 29, 36, 0.97);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    width: min(760px, calc(100vw - 24px));
+    max-height: 72vh;
+    overflow-y: auto;
+    box-shadow: 0 14px 36px rgba(0,0,0,0.65);
+  }
+  #filterDrawer.open { display: block; }
+  .filter-drawer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+    gap: 10px;
+  }
+  .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .filter-field label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .filter-field select {
+    background: #11141a;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 9px;
+    border-radius: 7px;
+    font-size: 12px;
+    width: 100%;
+  }
+  .filter-field select.spoiler-select {
+    border-color: rgba(245, 158, 11, 0.55);
+    color: #fde68a;
+  }
+  .filter-drawer-footer {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 12px;
+  }
+  /* Puces des filtres actifs quand le tiroir est fermé */
+  #activeFilterChips {
+    pointer-events: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .active-chip {
+    background: rgba(37, 99, 235, 0.9);
+    border: 1px solid #60a5fa;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .active-chip:hover { background: #1d4ed8; }
 
   /* Bannière Mode Focus actif */
   #focusBanner {
     display: none;
-    position: absolute;
-    top: 96px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 18;
+    pointer-events: auto;
     background: rgba(37, 99, 235, 0.92);
     backdrop-filter: blur(6px);
     color: #fff;
@@ -342,13 +451,13 @@
     border-radius: 10px;
     font-size: 11.5px;
     border: 1px solid var(--border);
-    max-width: 290px;
+    max-width: 295px;
     max-height: 55vh;
     overflow-y: auto;
     box-shadow: 0 10px 30px rgba(0,0,0,0.55);
   }
   #legend.open { display: block; }
-  #legend h4 { margin: 6px 0 5px; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  #legend h4 { margin: 8px 0 5px; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
   #legend h4:first-child { margin-top: 0; }
   #legend .item { display: flex; align-items: center; gap: 7px; margin: 4px 0; cursor: pointer; }
   #legend .item:hover { color: #fff; }
@@ -628,12 +737,10 @@
     #panel.hidden { transform: translateY(105%); }
     #toolbar {
       padding: 6px 8px;
-      gap: 4px;
-      max-height: 132px;
-      overflow-y: auto;
+      gap: 5px;
+      border-radius: 14px;
     }
-    #toolbar select { max-width: 128px; font-size: 11px; padding: 4px 6px; }
-    #toolbar button { font-size: 11px; padding: 4px 7px; }
+    #toolbar button, #toolbar a { font-size: 11px; padding: 5px 8px; }
     #bottomSearch {
       left: auto;
       right: 12px;
@@ -651,36 +758,99 @@
   <aside id="panel" class="hidden"></aside>
 </div>
 
-<!-- Barre de filtres en haut -->
-<div id="toolbar">
-  <button id="btnOpenAdd" class="btn-primary">+ Ajouter via le Net</button>
-  <button id="btnOpenCodex" class="btn-codex">🛡️ Armées, Maisons & Garennes</button>
-  <select id="filterSpoiler" class="spoiler-select" title="Mode Anti-Spoiler : affiche les affectations à l'instant T (tome choisi), masque les personnages ultérieurs et cache les décès">
-    <option value="">🛡️ Anti-Spoiler : Aucun (Tout voir)</option>
-  </select>
-  <select id="filterTome" title="Filtrer par tome d'apparition (et voir l'affectation à ce tome)"><option value="">Tous les tomes (1–10)</option></select>
-  <select id="filterFaction"><option value="">Toutes les factions</option></select>
-  <select id="filterArmee"><option value="">Toutes les armées (n° & surnom)</option></select>
-  <select id="filterLegion"><option value="">Toutes les légions</option></select>
-  <select id="filterRegiment"><option value="">Tous régiments / bataillons</option></select>
-  <select id="filterUnite"><option value="">Toutes escouades / unités</option></select>
-  <select id="filterGrade"><option value="">Tous les grades</option></select>
-  <select id="filterMaisonGarenne"><option value="">Toutes Maisons / Garennes / Tuiles</option></select>
-  <select id="filterPeuple"><option value="">Tous les peuples</option></select>
-  <select id="filterTribu"><option value="">Toutes tribus / nations</option></select>
-  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted)" title="Afficher les portraits officiels directement sur les nœuds du graphe">
-    <input type="checkbox" id="toggleNodePortraits" checked /> Portraits
-  </label>
-  <button id="btnReset" title="Réinitialiser tous les filtres">Réinitialiser</button>
-  <button id="btnPullDrive" title="Recharger les modifications faites dans Google Sheets">↻ Sync Sheets</button>
-  <a id="btnDownloadApk" href="https://github.com/ManiO-hub/malazan-tree/releases/download/v1.0-apk/malazan-tree.apk" style="background:#10b981;border:1px solid #059669;color:#fff;padding:5px 9px;border-radius:6px;font-size:11.5px;font-weight:600;text-decoration:none;white-space:nowrap" title="Télécharger l'application Android (.apk)">📲 App Android (.apk)</a>
-  <span id="stats"></span>
-</div>
+<!-- Barre supérieure compacte + Tiroir de filtres repliable -->
+<div id="topWrap">
+  <div id="toolbar">
+    <button id="btnToggleFilters" class="btn-filter" type="button" title="Ouvrir / fermer le panneau des filtres">
+      ⚙️ Filtres <span id="filterCountBadge" style="display:none;background:#3b82f6;color:#fff;padding:1px 6px;border-radius:10px;font-size:10.5px">0</span>
+    </button>
+    <button id="btnToggleLayout" class="btn-layout" type="button" title="Basculer entre la carte organisée par Camps & Équipages et le graphe libre">
+      🗺️ Vue : Camps & Unités
+    </button>
+    <button id="btnToggleDivine" class="btn-divine" type="button" title="Mettre en avant ou isoler les Dieux et leurs Représentants (Glaive Mortel, Destriant, Bouclier-Enclume, Chevaliers…)">
+      ⚡ Dieux & Élus
+    </button>
+    <button id="btnOpenCodex" class="btn-codex" type="button">🛡️ Codex Armées & Garennes</button>
+    <button id="btnOpenAdd" class="btn-primary" type="button">+ Ajouter via le Net</button>
+    <button id="btnPullDrive" type="button" title="Recharger les modifications faites dans Google Sheets">↻ Sync Sheets</button>
+    <a id="btnDownloadApk" href="https://github.com/ManiO-hub/malazan-tree/releases/download/v1.0-apk/malazan-tree.apk" style="background:#10b981;border-color:#059669;color:#fff" title="Télécharger l'application Android (.apk)">📲 APK</a>
+    <span id="stats"></span>
+  </div>
 
-<!-- Bannière Mode Focus Voisinage -->
-<div id="focusBanner">
-  <span id="focusBannerText">🎯 Focus réseau actif</span>
-  <button type="button" onclick="clearFocusMode()">Quitter le focus ✕</button>
+  <!-- Tiroir repliable contenant tous les filtres détaillés -->
+  <div id="filterDrawer">
+    <div class="filter-drawer-grid">
+      <div class="filter-field">
+        <label>🛡️ Instant T / Mode Anti-Spoiler</label>
+        <select id="filterSpoiler" class="spoiler-select">
+          <option value="">Aucun (Tout voir — T1 à T10)</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label>📖 Tome d'apparition</label>
+        <select id="filterTome"><option value="">Tous les tomes (1–10)</option></select>
+      </div>
+      <div class="filter-field">
+        <label>🏛️ Faction / Camp</label>
+        <select id="filterFaction"><option value="">Toutes les factions</option></select>
+      </div>
+      <div class="filter-field">
+        <label>⚔️ Armée (n° & surnom)</label>
+        <select id="filterArmee"><option value="">Toutes les armées</option></select>
+      </div>
+      <div class="filter-field">
+        <label>🦅 Légion</label>
+        <select id="filterLegion"><option value="">Toutes les légions</option></select>
+      </div>
+      <div class="filter-field">
+        <label>🛡️ Régiment / Bataillon / Compagnie</label>
+        <select id="filterRegiment"><option value="">Tous régiments / bataillons</option></select>
+      </div>
+      <div class="filter-field">
+        <label>⛺ Escouade / Unité</label>
+        <select id="filterUnite"><option value="">Toutes escouades / unités</option></select>
+      </div>
+      <div class="filter-field">
+        <label>🎖️ Grade militaire / hiérarchique</label>
+        <select id="filterGrade"><option value="">Tous les grades</option></select>
+      </div>
+      <div class="filter-field">
+        <label>✨ Maisons / Garennes / Tuiles</label>
+        <select id="filterMaisonGarenne"><option value="">Toutes Maisons / Garennes / Tuiles</option></select>
+      </div>
+      <div class="filter-field">
+        <label>🧬 Peuple</label>
+        <select id="filterPeuple"><option value="">Tous les peuples</option></select>
+      </div>
+      <div class="filter-field">
+        <label>🌍 Tribu / Nationalité</label>
+        <select id="filterTribu"><option value="">Toutes tribus / nations</option></select>
+      </div>
+    </div>
+    <div class="filter-drawer-footer">
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text)">
+          <input type="checkbox" id="toggleNodePortraits" checked /> Afficher les portraits sur les nœuds
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text)" title="En vue par Camps, atténue les traits reliant deux camps différents pour mieux lire les liens internes à chaque camp">
+          <input type="checkbox" id="toggleDimCrossEdges" /> Atténuer les liens entre camps différents
+        </label>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="btnReset" type="button" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:6px;cursor:pointer;font-weight:600">Réinitialiser tout</button>
+        <button id="btnCloseFilterDrawer" type="button" style="background:var(--accent);border:none;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600">Fermer ✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Puces des filtres actifs visibles d'un coup d'œil même tiroir fermé -->
+  <div id="activeFilterChips"></div>
+
+  <!-- Bannière Mode Focus Voisinage -->
+  <div id="focusBanner">
+    <span id="focusBannerText">🎯 Focus réseau actif</span>
+    <button type="button" onclick="clearFocusMode()">Quitter le focus ✕</button>
+  </div>
 </div>
 
 <!-- Légende repliée en bouton en bas à gauche -->
@@ -898,8 +1068,382 @@ const REGIMENT_GROUPS = [
   { value: "__GROUP__Cadre de Mages", label: "✨ Cadres de Mages" }
 ];
 
+// Détection des Dieux & de leurs Représentants (Glaive Mortel, Destriant, Bouclier-Enclume, Chevaliers, Hérauts, Grands Prêtres)
+// Ils restent dans leur camp et leur escouade, mais sont mis en avant visuellement (halo doré + sous-titre sacré) !
+function getDivineOrRepInfo(p) {
+  if (!p) return null;
+  if (p.faction === "divin") {
+    return { isGod: true, isRep: false, badge: "⚡ Divinité / Ascendant", color: "#facc15" };
+  }
+  const blob = `${p.grade || ""} ${p.role || ""} ${p.maisonsGarennes || ""}`.toLowerCase();
+  if (blob.includes("glaive mortel")) {
+    return { isGod: false, isRep: true, badge: "⚔️ Glaive Mortel", color: "#f59e0b" };
+  }
+  if (blob.includes("bouclier-enclume")) {
+    return { isGod: false, isRep: true, badge: "🛡️ Bouclier-Enclume", color: "#f59e0b" };
+  }
+  if (blob.includes("destriant")) {
+    return { isGod: false, isRep: true, badge: "✨ Destriant", color: "#f59e0b" };
+  }
+  if (blob.includes("maître du jeu")) {
+    return { isGod: false, isRep: true, badge: "🎴 Maître du Jeu", color: "#f59e0b" };
+  }
+  if (blob.includes("chevalier de haute maison") || blob.includes("chevalier des ténèbres") || blob.includes("chevalier des chaînes") || blob.includes("chevalier de la mort") || blob.includes("ex-chevalier de la mort")) {
+    return { isGod: false, isRep: true, badge: "👑 Chevalier de Maison", color: "#f59e0b" };
+  }
+  if (blob.includes("sha'ik") || blob.includes("épée maudite") || blob.includes("empereur des mille mers")) {
+    return { isGod: false, isRep: true, badge: "👑 Élu / Champion lié", color: "#f59e0b" };
+  }
+  if (blob.includes("grand prêtre") || blob.includes("prêtresse de l'errant") || blob.includes("prêtre de hood") || blob.includes("prêtre de goule") || blob.includes("héraut") || blob.includes("roi de la mort")) {
+    return { isGod: false, isRep: true, badge: "🔮 Prêtre / Héraut Divin", color: "#f59e0b" };
+  }
+  return null;
+}
+
+// Détermine dans quel sous-îlot (Armée, Escouade, Équipage, Compagnie, Groupe) ranger un personnage au sein de son Camp
+function getSubIslandName(p) {
+  const f = p.faction || "independant";
+  const arm = (p.armee || "").toLowerCase();
+  const reg = (p.regiment || "").toLowerCase();
+  const uni = (p.unite || "").toLowerCase();
+  const rol = (p.role || "").toLowerCase();
+  const cid = p.id;
+
+  if (f === "divin") {
+    if (["k-rul", "mael", "draconus", "kilmandaros", "errastas", "sechul-lath", "edgewalker", "burn"].includes(cid)) {
+      return "🌌 Dieux Anciens (Elder Gods)";
+    }
+    return "👑 Souverains des Hautes Maisons & Panthéon";
+  }
+
+  if (f === "empire") {
+    if (arm.includes("2e armée") || reg.includes("brûleurs de ponts")) {
+      if (uni.includes("9e escouade") || cid === "ganoes-paran") return "🔥 2e Armée · Brûleurs de Ponts (9e Escouade)";
+      if (uni.includes("7e escouade")) return "🔥 2e Armée · Brûleurs de Ponts (7e Escouade)";
+      return "🦅 2e Armée (L'Ost de Unbras) · État-major & Cadre";
+    }
+    if (arm.includes("7e armée")) {
+      return "🐺 7e Armée (La Chaîne des Chiens)";
+    }
+    if (arm.includes("14e armée")) {
+      if (uni.includes("4e escouade")) return "🦴 14e Armée · 4e Escouade (Violain / Archet)";
+      if (uni.includes("5e escouade")) return "🦴 14e Armée · 5e Escouade (Gesler & Ouragan)";
+      if (uni.includes("7e escouade") || uni.includes("8e escouade") || reg.includes("2e compagnie")) return "🦴 14e Armée · 2e Compagnie, 7e & 8e Escouades (Ashok / Hellian)";
+      if (uni.includes("9e escouade") || uni.includes("12e escouade") || uni.includes("13e escouade")) return "🦴 14e Armée · 9e & 13e Escouades (Baume & Urb)";
+      if (reg.includes("nouveaux brûleurs")) return "🔥 14e Armée · Nouveaux Brûleurs de Ponts";
+      return "👑 14e Armée (Les Osseleurs) · État-major & Légions";
+    }
+    if (arm.includes("griffe") || arm.includes("serre") || reg.includes("griffe") || reg.includes("serre")) {
+      return "🗡️ La Griffe & La Serre (Services Secrets)";
+    }
+    if (arm.includes("marine impériale")) {
+      return "⚓ Marine Impériale (Flotte Malazéenne)";
+    }
+    return "🏛️ Haut Commandement Impérial & Vieille Garde";
+  }
+
+  if (f === "wickien") {
+    if (uni.includes("sorcier") || rol.includes("sorcier") || rol.includes("sorcière")) {
+      return "✨ Cadre des Sorciers Wickiens";
+    }
+    return "🐎 Cavalerie des Clans Wickiens (Clan du Corbeau)";
+  }
+
+  if (f === "coalition") {
+    if (arm.includes("apocalypse") || arm.includes("tourbillon")) {
+      return "🌪️ Armée de l'Apocalypse (Rébellion du Tourbillon)";
+    }
+    return "🔨 Ost de Genabackis (Coalition de Caladan Rumin)";
+  }
+
+  if (f === "darujhistan") {
+    if (arm.includes("guilde des assassins") || reg.includes("guilde des assassins")) {
+      return "🌑 Guilde des Assassins de Darujhistan";
+    }
+    if (["kruppe", "coll", "murillio", "brise-cercle"].includes(cid)) {
+      return "🍺 Taverne du Phénix & Réseau de l'Anguille";
+    }
+    return "🏛️ Cabale T'orrud & Conseil des Nobles";
+  }
+
+  if (f === "luneNoire") {
+    if (["silchas-ruin", "nimander", "skintick", "nenanda", "aranatha", "kedeviss", "desra", "clip"].includes(cid)) {
+      return "🗡️ Lignée de Rake & Pèlerins Tiste Andii";
+    }
+    return "🌙 Cour de Sangdelune & Corail Noir";
+  }
+
+  if (f === "edur") {
+    if (cid.includes("sengar") || cid === "mayen") {
+      return "⚔️ Lignée & Famille Sengar";
+    }
+    return "🌑 Cour du Roi Sorcier & Culte des Écumes";
+  }
+
+  if (f === "lether") {
+    if (reg.includes("inextinguible gratitude") || arm.includes("pirate")) {
+      return "🏴‍☠️ Équipage de l'Inextinguible Gratitude";
+    }
+    if (arm.includes("dératiseurs") || arm.includes("patriotistes") || arm.includes("marchands")) {
+      return "🐀 Guilde des Dératiseurs & Patriotistes";
+    }
+    if (["tehol-beddict", "seren-pedac", "hull-beddict"].includes(cid)) {
+      return "💰 Réseau Clandestin de Tehol & Frères Beddict";
+    }
+    return "👑 Cour & Garde Royale de Letheras";
+  }
+
+  if (f === "independant") {
+    if (arm.includes("garde pourpre") || cid === "twisp") {
+      return "🛡️ La Garde Pourpre (Les Assermentés)";
+    }
+    if (arm.includes("épées grises")) {
+      return "⚔️ Compagnie des Épées Grises (Capustan)";
+    }
+    if (arm.includes("ombre")) {
+      return "🌑 Cour & Compagnie de l'Ombre";
+    }
+    if (["yan-tovis", "yedan-derryg", "brullyg", "karpette", "tenace"].includes(cid)) {
+      return "🌊 Peuple des Trembles (The Shake)";
+    }
+    if (["bauchelain", "korbal-broach", "emancipor", "gruntle", "stonny", "keruli"].includes(cid)) {
+      return "💀 Nécromanciens & Caravane de Capustan";
+    }
+    if (["icarium", "gothos", "raest", "marmite", "tool", "onrack", "kilava", "pran-chole"].includes(cid)) {
+      return "🏛️ Jaghuts, Imass & Gardiens de l'Azath";
+    }
+    return "🧭 Champions, Ascendants & Voyageurs Solitaires";
+  }
+
+  if (f === "t-lan-imass") {
+    return "🔥 Clans T'lan Imass (Logros, Kron & Non-Liés)";
+  }
+
+  if (f === "innommes") {
+    return "🔮 Ordre des Innommés (Gardiens d'Icarium)";
+  }
+
+  return "⛺ Groupe principal";
+}
+
+// Ordre et colonnes macroscopiques des Territoires (garantit zéro chevauchement quelle que soit la taille des camps)
+const MACRO_COLUMNS = [
+  ["empire", "wickien"],
+  ["divin", "independant", "innommes", "t-lan-imass"],
+  ["coalition", "darujhistan", "luneNoire", "lether", "edur"]
+];
+const CAMP_ISLAND_COLS = {
+  "empire": 3,
+  "divin": 2,
+  "independant": 2,
+  "lether": 2,
+  "edur": 2,
+  "luneNoire": 2,
+  "darujhistan": 2,
+  "coalition": 2,
+  "wickien": 2
+};
+
+let layoutMode = "camps"; // "camps" ou "free"
+let highlightDivineOnly = false;
+let renderedTerritories = []; // [{ factionId, label, color, x, y, w, h, islands: [{ title, x, y, w, h }] }]
+
+// Calcule les coordonnées exactes (x, y) de chaque personnage dans son sous-îlot et dans son Camp (sans aucun chevauchement)
+function computeCampAndIslandLayout(nodesList) {
+  renderedTerritories = [];
+  const byFaction = {};
+  nodesList.forEach(n => {
+    const f = n.info.faction || "independant";
+    if (!byFaction[f]) byFaction[f] = [];
+    byFaction[f].push(n);
+  });
+
+  const NODE_W = 172;
+  const NODE_H = 128;
+  const ISLAND_PAD_X = 46;
+  const ISLAND_PAD_Y = 52;
+  const ISLAND_GAP_X = 64;
+  const ISLAND_GAP_Y = 68;
+  const CAMP_PAD_X = 72;
+  const CAMP_PAD_Y_TOP = 92;
+  const CAMP_PAD_Y_BOT = 68;
+
+  // 1. Construire chaque Camp en coordonnées locales (0, 0)
+  const campBoxes = {};
+  Object.entries(byFaction).forEach(([fid, fNodes]) => {
+    const facMeta = (DATA.factions && DATA.factions[fid]) || { label: fid, color: "#64748b" };
+
+    const byIsland = {};
+    fNodes.forEach(n => {
+      const isl = getSubIslandName(n.info);
+      if (!byIsland[isl]) byIsland[isl] = [];
+      byIsland[isl].push(n);
+    });
+
+    const islandBlocks = Object.entries(byIsland).map(([title, iNodes]) => {
+      iNodes.sort((a, b) => {
+        const da = getDivineOrRepInfo(a.info) ? 1 : 0;
+        const db = getDivineOrRepInfo(b.info) ? 1 : 0;
+        if (da !== db) return db - da;
+        return a.info.nom.localeCompare(b.info.nom);
+      });
+      const cols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(iNodes.length))));
+      const rows = Math.ceil(iNodes.length / cols);
+      const w = Math.max(295, cols * NODE_W + ISLAND_PAD_X * 2);
+      const h = rows * NODE_H + ISLAND_PAD_Y * 2;
+      return { title, nodes: iNodes, cols, rows, w, h };
+    });
+
+    const maxIslCols = CAMP_ISLAND_COLS[fid] || 1;
+    const numCols = Math.min(maxIslCols, islandBlocks.length);
+    const colWidths = new Array(numCols).fill(0);
+    const colHeights = new Array(numCols).fill(0);
+    const colItems = Array.from({ length: numCols }, () => []);
+
+    islandBlocks.forEach(blk => {
+      let bestCol = 0;
+      for (let c = 1; c < numCols; c++) {
+        if (colHeights[c] < colHeights[bestCol]) bestCol = c;
+      }
+      colItems[bestCol].push(blk);
+      colWidths[bestCol] = Math.max(colWidths[bestCol], blk.w);
+      colHeights[bestCol] += blk.h + ISLAND_GAP_Y;
+    });
+
+    const totalW = colWidths.reduce((a, b) => a + b, 0) + Math.max(0, numCols - 1) * ISLAND_GAP_X + CAMP_PAD_X * 2;
+    const totalH = Math.max(...colHeights, 160) - ISLAND_GAP_Y + CAMP_PAD_Y_TOP + CAMP_PAD_Y_BOT;
+
+    const localIslands = [];
+    let curColX = CAMP_PAD_X;
+    for (let c = 0; c < numCols; c++) {
+      let curY = CAMP_PAD_Y_TOP;
+      const cW = colWidths[c];
+      colItems[c].forEach(blk => {
+        const islX = curColX + (cW - blk.w) / 2;
+        const islY = curY;
+
+        blk.nodes.forEach((n, idx) => {
+          const r = Math.floor(idx / blk.cols);
+          const col = idx % blk.cols;
+          const itemsInThisRow = (r === blk.rows - 1) ? (blk.nodes.length - r * blk.cols) : blk.cols;
+          const rowW = itemsInThisRow * NODE_W;
+          const rowStartX = islX + (blk.w - rowW) / 2 + NODE_W / 2;
+          n._relX = rowStartX + col * NODE_W;
+          n._relY = islY + ISLAND_PAD_Y + r * NODE_H + NODE_H / 2 - 10;
+        });
+
+        localIslands.push({
+          title: blk.title,
+          relX: islX,
+          relY: islY,
+          w: blk.w,
+          h: blk.h,
+          nodes: blk.nodes
+        });
+        curY += blk.h + ISLAND_GAP_Y;
+      });
+      curColX += cW + ISLAND_GAP_X;
+    }
+
+    campBoxes[fid] = {
+      factionId: fid,
+      label: facMeta.label,
+      color: facMeta.color,
+      w: totalW,
+      h: totalH,
+      localIslands
+    };
+  });
+
+  // 2. Assembler les Camps par macro-colonnes avec espacement garanti
+  const MACRO_GAP_X = 220;
+  const MACRO_GAP_Y = 170;
+
+  const placedFids = new Set();
+  const activeMacroCols = [];
+
+  MACRO_COLUMNS.forEach(colFids => {
+    const boxes = colFids.filter(fid => campBoxes[fid]).map(fid => {
+      placedFids.add(fid);
+      return campBoxes[fid];
+    });
+    if (boxes.length) activeMacroCols.push(boxes);
+  });
+
+  // Ajouter toute éventuelle faction supplémentaire non listée
+  const extraBoxes = Object.keys(campBoxes).filter(fid => !placedFids.has(fid)).map(fid => campBoxes[fid]);
+  if (extraBoxes.length) {
+    if (activeMacroCols.length) activeMacroCols[activeMacroCols.length - 1].push(...extraBoxes);
+    else activeMacroCols.push(extraBoxes);
+  }
+
+  let macroX = 0;
+  activeMacroCols.forEach(colBoxes => {
+    const colW = Math.max(...colBoxes.map(b => b.w));
+    let macroY = 0;
+
+    colBoxes.forEach(box => {
+      const campX = macroX + (colW - box.w) / 2;
+      const campY = macroY;
+
+      const finalIslands = box.localIslands.map(isl => {
+        isl.nodes.forEach(n => {
+          n.x = campX + n._relX;
+          n.y = campY + n._relY;
+        });
+        return {
+          title: isl.title,
+          x: campX + isl.relX,
+          y: campY + isl.relY,
+          w: isl.w,
+          h: isl.h
+        };
+      });
+
+      renderedTerritories.push({
+        factionId: box.factionId,
+        label: box.label,
+        color: box.color,
+        x: campX,
+        y: campY,
+        w: box.w,
+        h: box.h,
+        islands: finalIslands
+      });
+
+      macroY += box.h + MACRO_GAP_Y;
+    });
+
+    macroX += colW + MACRO_GAP_X;
+  });
+}
+
+// Dessin d'un rectangle aux coins arrondis sur le Canvas 2D
+function drawRoundedRect(ctx, x, y, w, h, r) {
+  const rad = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.lineTo(x + w - rad, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+  ctx.lineTo(x + w, y + h - rad);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+  ctx.lineTo(x + rad, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+  ctx.lineTo(x, y + rad);
+  ctx.quadraticCurveTo(x, y, x + rad, y);
+  ctx.closePath();
+}
+
+function hexToRgba(hex, alpha) {
+  const h = String(hex || "#64748b").replace("#", "");
+  const num = parseInt(h.length === 3 ? h.split("").map(x => x + x).join("") : h, 16);
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // Recherche directe multi-sources depuis le navigateur (mode autonome / APK / GitHub Pages)
-// RÈGLE STRICTE : toutes les cases non précisées dans les sources restent VIDES ("") par défaut !
 async function browserWikiLookup(queryName) {
   const vfToVo = (window.TRANSLATIONS_DATA && window.TRANSLATIONS_DATA.vf_to_vo) || {};
   const voToVf = (window.TRANSLATIONS_DATA && window.TRANSLATIONS_DATA.vo_to_vf) || {};
@@ -918,7 +1462,6 @@ async function browserWikiLookup(queryName) {
     .replace(/'''|''/g, "")
     .replace(/\s+/g, " ").trim();
 
-  // 1. Interrogation du Wiki Encyclopédie Malazéenne (FR)
   let frTitle = "", frWikitext = "", frThumb = "", frResume = "";
   const frInfobox = {};
   try {
@@ -959,7 +1502,6 @@ async function browserWikiLookup(queryName) {
     }
   } catch (e) {}
 
-  // 2. Interrogation du Malazan Wiki (VO)
   let enTitle = "", enWikitext = "", enThumb = "", enIntro = "";
   const enInfobox = {};
   try {
@@ -1019,9 +1561,7 @@ async function browserWikiLookup(queryName) {
   const vfName = frInfobox.nom || voToVf[voName.toLowerCase()] || knownVF || frTitle || raw;
   const isFem = ["femme", "femelle", "female", "féminin"].includes((frInfobox.sexe || enInfobox.gender || "").toLowerCase());
 
-  // Peuple : uniquement si précisé dans les sources, sinon ""
   const peuple = frInfobox.race || enInfobox.race || "";
-  // Statut : uniquement si précisé, sinon ""
   let statut = "";
   if (enInfobox.died || frInfobox.décès) statut = isFem ? "Morte" : "Mort";
   else if (Object.keys(frInfobox).length || Object.keys(enInfobox).length) statut = isFem ? "Vivante" : "Vivant";
@@ -1080,7 +1620,6 @@ const RELATION_STYLES = {
   "Identité":                  { color: "#fab1a0", directed: false, dashes: true },
   "Bannissement":              { color: "#d63031", directed: true },
   "Conflit":                   { color: "#ff4757", directed: false },
-  // Rétrocompatibilité
   "Commandement":              { color: "#74b9ff", directed: true },
   "Hiérarchie":                { color: "#74b9ff", directed: true }
 };
@@ -1103,6 +1642,7 @@ const network = new vis.Network(
   { nodes: nodesDS, edges: edgesDS },
   {
     physics: {
+      enabled: false,
       solver: "forceAtlas2Based",
       forceAtlas2Based: {
         gravitationalConstant: -85,
@@ -1111,13 +1651,69 @@ const network = new vis.Network(
         springConstant: 0.07,
         avoidOverlap: 0.9
       },
-      stabilization: { iterations: 220, updateInterval: 25 }
+      stabilization: { iterations: 200, updateInterval: 25 }
     },
     interaction: { hover: true, tooltipDelay: 150, multiselect: true },
     nodes: { chosen: true },
-    edges: { selectionWidth: 2 }
+    edges: { selectionWidth: 2.5 }
   }
 );
+
+// Dessin sur le Canvas des Territoires (Camps / Empires) et des Sous-Îlots (Armées / Escouades / Équipages)
+network.on("beforeDrawing", ctx => {
+  if (layoutMode !== "camps" || !renderedTerritories.length) return;
+  ctx.save();
+
+  renderedTerritories.forEach(t => {
+    // 1. Grande zone du Camp / Empire
+    drawRoundedRect(ctx, t.x, t.y, t.w, t.h, 30);
+    ctx.fillStyle = hexToRgba(t.color, 0.075);
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = hexToRgba(t.color, 0.48);
+    ctx.stroke();
+
+    // Cartouche du titre du Camp en haut de la zone
+    ctx.font = "bold 22px system-ui, -apple-system, sans-serif";
+    const titleTxt = t.label.toUpperCase();
+    const tw = ctx.measureText(titleTxt).width;
+    const pillW = tw + 36;
+    const pillH = 38;
+    const pillX = t.x + (t.w - pillW) / 2;
+    const pillY = t.y + 16;
+
+    drawRoundedRect(ctx, pillX, pillY, pillW, pillH, 19);
+    ctx.fillStyle = t.color;
+    ctx.fill();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(titleTxt, t.x + t.w / 2, pillY + pillH / 2 + 1);
+
+    // 2. Sous-îlots (Armées, Escouades, Équipages, Compagnons) à l'intérieur du Camp
+    t.islands.forEach(isl => {
+      drawRoundedRect(ctx, isl.x, isl.y, isl.w, isl.h, 16);
+      ctx.fillStyle = "rgba(17, 19, 24, 0.45)";
+      ctx.fill();
+      ctx.save();
+      ctx.setLineDash([7, 6]);
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = hexToRgba(t.color, 0.42);
+      ctx.stroke();
+      ctx.restore();
+
+      // Étiquette du sous-îlot
+      ctx.font = "600 13.5px system-ui, -apple-system, sans-serif";
+      ctx.fillStyle = "#cbd5e1";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(isl.title, isl.x + isl.w / 2, isl.y + 11);
+    });
+  });
+
+  ctx.restore();
+});
 
 function parseTomesList(tomesStr) {
   return String(tomesStr || "")
@@ -1126,7 +1722,6 @@ function parseTomesList(tomesStr) {
     .filter(Boolean);
 }
 
-// Découpe la liste des Maisons / Garennes / Tuiles d'un personnage en éléments individuels
 function parseMaisonsGarennesTokens(str) {
   if (!str) return [];
   return String(str)
@@ -1135,7 +1730,6 @@ function parseMaisonsGarennesTokens(str) {
     .filter(s => s.length >= 2);
 }
 
-// Résout l'affectation d'un personnage à l'instant T (tome actif ou anti-spoiler) + ses précédentes affectations
 function resolveAffectationAtTome(p, targetTome) {
   const rawTimeline = String(p.affectationsTomes || "").trim();
   const rawPrev = String(p.anciennesAffectations || "").trim();
@@ -1173,7 +1767,6 @@ function resolveAffectationAtTome(p, targetTome) {
     const currentSeg = knownSegs[knownSegs.length - 1];
     const earlierSegs = knownSegs.slice(0, -1).map(s => s.text);
     if (rawPrev && !earlierSegs.some(x => x.includes(rawPrev))) {
-      // N'inclure anciennesAffectations que si elle ne cite pas uniquement un tome futur > maxT
       const prevTomes = [...rawPrev.matchAll(/T(\d+)/gi)].map(m => Number(m[1]));
       if (!prevTomes.length || Math.min(...prevTomes) <= maxT) {
         earlierSegs.unshift(rawPrev);
@@ -1208,7 +1801,6 @@ function makeInitialsAvatarSvg(nom, bgColor) {
 
 function rebuildGraph(newData) {
   DATA = newData;
-  // Nettoyage automatique si d'anciennes données avaient encore 'ombre' ou 'chaines' dans factions
   if (DATA.factions) {
     delete DATA.factions.ombre;
     delete DATA.factions.chaines;
@@ -1242,14 +1834,13 @@ function rebuildGraph(newData) {
 
   const usedFactions = Object.keys(DATA.factions || {});
   fillSelect("filterFaction", "Toutes les factions", usedFactions, DATA.factions);
-  fillSelect("filterArmee", "Toutes les armées (n° & surnom)", [...new Set(DATA.personnages.map(p => p.armee))].filter(Boolean).sort());
+  fillSelect("filterArmee", "Toutes les armées", [...new Set(DATA.personnages.map(p => p.armee))].filter(Boolean).sort());
   fillSelect("filterLegion", "Toutes les légions", [...new Set(DATA.personnages.map(p => p.legion))].filter(Boolean).sort());
   fillSelect("filterUnite", "Toutes escouades / unités", [...new Set(DATA.personnages.map(p => p.unite))].filter(Boolean).sort());
   fillSelect("filterGrade", "Tous les grades", [...new Set(DATA.personnages.map(p => p.grade))].filter(Boolean).sort());
   fillSelect("filterPeuple", "Tous les peuples", [...new Set(DATA.personnages.map(p => p.peuple))].filter(Boolean).sort());
   fillSelect("filterTribu", "Toutes tribus / nations", [...new Set(DATA.personnages.map(p => p.tribu))].filter(Boolean).sort());
 
-  // Sélecteur Régiment / Bataillon / Compagnie (incluant anciens régiments)
   const rSel = document.getElementById("filterRegiment");
   const curR = rSel.value;
   rSel.innerHTML = `<option value="">Tous régiments / bataillons</option>`;
@@ -1273,7 +1864,6 @@ function rebuildGraph(newData) {
   rSel.appendChild(exactOpt);
   rSel.value = curR;
 
-  // Sélecteur Maisons / Garennes / Tuiles
   const mgTokens = new Set();
   DATA.personnages.forEach(p => {
     parseMaisonsGarennesTokens(p.maisonsGarennes).forEach(t => mgTokens.add(t));
@@ -1282,7 +1872,6 @@ function rebuildGraph(newData) {
   (DATA.warrens || []).forEach(w => mgTokens.add(w.nom));
   fillSelect("filterMaisonGarenne", "Toutes Maisons / Garennes / Tuiles", [...mgTokens].sort());
 
-  // Dans le modal d'ajout : option vide par défaut !
   const fFacSel = document.getElementById("f_faction");
   fFacSel.innerHTML = `<option value="">— Non renseigné (vide) —</option>` +
     Object.entries(DATA.factions)
@@ -1296,10 +1885,17 @@ function rebuildGraph(newData) {
 
   allNodes = DATA.personnages.map(p => {
     const c = facColor(p.faction);
-    const label = p.nomVO && p.nomVO.toLowerCase() !== p.nom.toLowerCase()
+    const divInfo = getDivineOrRepInfo(p);
+    let label = p.nomVO && p.nomVO.toLowerCase() !== p.nom.toLowerCase()
       ? `${p.nom}\n(${p.nomVO})`
       : p.nom;
+    if (divInfo) {
+      label += `\n${divInfo.badge}`;
+    }
     const hasImg = showPortraits && p.portrait;
+    const isHighlighted = !!divInfo;
+    const borderCol = isHighlighted ? divInfo.color : (hasImg ? c : "#ffffff");
+
     return {
       id: p.id,
       label: label,
@@ -1307,32 +1903,37 @@ function rebuildGraph(newData) {
       shape: hasImg ? "circularImage" : "box",
       image: hasImg ? p.portrait : undefined,
       brokenImage: hasImg ? makeInitialsAvatarSvg(p.nom, c) : undefined,
-      size: hasImg ? 26 : undefined,
-      borderWidth: hasImg ? 3 : 2,
+      size: hasImg ? (isHighlighted ? 31 : 25) : undefined,
+      borderWidth: isHighlighted ? 4 : (hasImg ? 3 : 2),
       margin: 8,
+      shadow: isHighlighted
+        ? { enabled: true, color: "rgba(245, 158, 11, 0.75)", size: 18, x: 0, y: 0 }
+        : { enabled: false },
       color: {
         background: c,
-        border: hasImg ? c : "#ffffff",
+        border: borderCol,
         highlight: { background: c, border: "#facc15" },
         hover: { background: c, border: "#fde047" }
       },
       font: {
-        color: "#ffffff",
-        size: 12.5,
+        color: isHighlighted ? "#fef08a" : "#ffffff",
+        size: isHighlighted ? 12.5 : 12,
         strokeWidth: hasImg ? 3 : 0,
         strokeColor: "#111318"
       },
-      info: p
+      info: p,
+      divInfo: divInfo
     };
   });
 
-  // Calcul des paires ayant plusieurs liens pour courber chaque arête sans superposition
   const pairCounts = {};
   const pairSeen = {};
   DATA.relations.forEach(r => {
     const k = [r.a, r.b].sort().join("::");
     pairCounts[k] = (pairCounts[k] || 0) + 1;
   });
+
+  const dimCross = document.getElementById("toggleDimCrossEdges")?.checked;
 
   allEdges = DATA.relations.map((r, idx) => {
     const s = RELATION_STYLES[r.type] || { color: "#94a3b8", directed: false };
@@ -1348,16 +1949,28 @@ function rebuildGraph(newData) {
       smoothCfg = { enabled: true, type: dir, roundness };
     }
 
+    const pA = persoById[r.a];
+    const pB = persoById[r.b];
+    const isCrossCamp = pA && pB && pA.faction !== pB.faction;
+    const isDivineLink = (pA && pA.faction === "divin") || (pB && pB.faction === "divin");
+
+    let edgeColor = s.color;
+    let edgeWidth = isDivineLink ? 2.6 : 2;
+    if (dimCross && isCrossCamp && !isDivineLink) {
+      edgeColor = hexToRgba(s.color, 0.22);
+      edgeWidth = 1.2;
+    }
+
     return {
       id: "e" + idx,
       from: r.a,
       to: r.b,
-      label: r.type,
+      label: (dimCross && isCrossCamp && !isDivineLink) ? "" : r.type,
       title: `${r.type} : ${r.label}`,
-      width: 2,
-      dashes: !!s.dashes,
-      color: { color: s.color, highlight: "#facc15", hover: "#fde047" },
-      font: { color: s.color, size: 10, strokeWidth: 2, strokeColor: "#111318", align: "middle" },
+      width: edgeWidth,
+      dashes: isDivineLink ? [6, 4] : !!s.dashes,
+      color: { color: edgeColor, highlight: "#facc15", hover: "#fde047" },
+      font: { color: edgeColor, size: 10, strokeWidth: 2, strokeColor: "#111318", align: "middle" },
       arrows: s.directed ? { to: { enabled: true, scaleFactor: 0.65 } } : undefined,
       smooth: smoothCfg,
       rel: r
@@ -1365,7 +1978,11 @@ function rebuildGraph(newData) {
   });
 
   document.getElementById("legend").innerHTML =
-    `<h4>Factions (cliquer pour filtrer)</h4>` +
+    `<h4>Mise en avant spéciale</h4>
+     <div class="item" onclick="document.getElementById('btnToggleDivine').click()">
+       <span class="dot" style="background:#f59e0b;box-shadow:0 0 8px #f59e0b"></span>⚡ Dieux & leurs Représentants (Glaive Mortel, Destriant, Bouclier-Enclume, Chevaliers…)
+     </div>
+     <h4>Factions / Camps (cliquer pour filtrer)</h4>` +
     usedFactions.map(fid => {
       const f = DATA.factions[fid];
       return `<div class="item" onclick="const s=document.getElementById('filterFaction');s.value=s.value==='${fid}'?'':'${fid}';s.dispatchEvent(new Event('change'))">
@@ -1379,10 +1996,43 @@ function rebuildGraph(newData) {
         <span class="dot" style="background:${st.color};height:4px;border-radius:2px"></span>${esc(k)} ${st.directed ? "→" : "↔"}
       </div>`).join("");
 
-  applyFilters();
+  applyFilters(true);
 }
 
+// Boutons de la barre supérieure compacte
+const filterDrawer = document.getElementById("filterDrawer");
+const btnToggleFilters = document.getElementById("btnToggleFilters");
+
+btnToggleFilters.addEventListener("click", () => {
+  filterDrawer.classList.toggle("open");
+  btnToggleFilters.classList.toggle("active", filterDrawer.classList.contains("open"));
+});
+document.getElementById("btnCloseFilterDrawer").addEventListener("click", () => {
+  filterDrawer.classList.remove("open");
+  btnToggleFilters.classList.remove("active");
+});
+
+document.getElementById("btnToggleLayout").addEventListener("click", () => {
+  layoutMode = layoutMode === "camps" ? "free" : "camps";
+  const btn = document.getElementById("btnToggleLayout");
+  if (layoutMode === "camps") {
+    btn.textContent = "🗺️ Vue : Camps & Unités";
+    network.setOptions({ physics: { enabled: false } });
+  } else {
+    btn.textContent = "🌌 Vue : Graphe Libre";
+    network.setOptions({ physics: { enabled: true } });
+  }
+  applyFilters(true);
+});
+
+document.getElementById("btnToggleDivine").addEventListener("click", () => {
+  highlightDivineOnly = !highlightDivineOnly;
+  document.getElementById("btnToggleDivine").classList.toggle("active", highlightDivineOnly);
+  applyFilters(true);
+});
+
 document.getElementById("toggleNodePortraits").addEventListener("change", () => rebuildGraph(DATA));
+document.getElementById("toggleDimCrossEdges").addEventListener("change", () => rebuildGraph(DATA));
 
 document.getElementById("btnToggleLegend").addEventListener("click", () => {
   document.getElementById("legend").classList.toggle("open");
@@ -1414,7 +2064,7 @@ window.setFocusMode = function(centerId, degree) {
   document.getElementById("focusBannerText").textContent =
     `🎯 Focus autour de ${p ? p.nom : centerId} (${degree === 1 ? "1er cercle direct" : "2 degrés de séparation"})`;
   banner.classList.add("visible");
-  applyFilters();
+  applyFilters(true);
   if (p) renderPanel(p);
 };
 
@@ -1422,7 +2072,7 @@ window.clearFocusMode = function() {
   focusCenterId = null;
   focusDegree = 0;
   document.getElementById("focusBanner").classList.remove("visible");
-  applyFilters();
+  applyFilters(true);
   const sel = network.getSelectedNodes();
   if (sel.length && persoById[sel[0]]) renderPanel(persoById[sel[0]]);
 };
@@ -1443,7 +2093,58 @@ function getSpoilerSafeStatut(p) {
   return raw;
 }
 
-function applyFilters() {
+function updateActiveFilterChips() {
+  const filterDefs = [
+    { id: "filterSpoiler", prefix: "🛡️ Instant T" },
+    { id: "filterTome", prefix: "📖 Tome" },
+    { id: "filterFaction", prefix: "🏛️ Camp" },
+    { id: "filterArmee", prefix: "⚔️ Armée" },
+    { id: "filterLegion", prefix: "🦅 Légion" },
+    { id: "filterRegiment", prefix: "🛡️ Régiment" },
+    { id: "filterUnite", prefix: "⛺ Escouade" },
+    { id: "filterGrade", prefix: "🎖️ Grade" },
+    { id: "filterMaisonGarenne", prefix: "✨ Maison/Garenne" },
+    { id: "filterPeuple", prefix: "🧬 Peuple" },
+    { id: "filterTribu", prefix: "🌍 Tribu" }
+  ];
+  const active = [];
+  filterDefs.forEach(fd => {
+    const sel = document.getElementById(fd.id);
+    if (sel && sel.value) {
+      const txt = sel.options[sel.selectedIndex]?.textContent || sel.value;
+      active.push({ id: fd.id, label: `${fd.prefix} : ${txt}` });
+    }
+  });
+  if (highlightDivineOnly) {
+    active.push({ id: "__DIVINE__", label: "⚡ Dieux & leurs Représentants" });
+  }
+
+  const badge = document.getElementById("filterCountBadge");
+  if (active.length > 0) {
+    badge.style.display = "inline-block";
+    badge.textContent = String(active.length);
+  } else {
+    badge.style.display = "none";
+  }
+
+  const container = document.getElementById("activeFilterChips");
+  container.innerHTML = active.map(a =>
+    `<span class="active-chip" onclick="clearSingleFilter('${esc(a.id)}')" title="Cliquer pour retirer ce filtre">${esc(a.label)} ✕</span>`
+  ).join("");
+}
+
+window.clearSingleFilter = function(id) {
+  if (id === "__DIVINE__") {
+    highlightDivineOnly = false;
+    document.getElementById("btnToggleDivine").classList.remove("active");
+  } else {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  }
+  applyFilters(true);
+};
+
+function applyFilters(shouldFit = false) {
   const rawQ = document.getElementById("search").value.trim();
   const q = rawQ.toLowerCase();
   const fSpoiler = document.getElementById("filterSpoiler").value;
@@ -1459,6 +2160,7 @@ function applyFilters() {
   const fTri = document.getElementById("filterTribu").value;
 
   document.getElementById("btnClearSearch").style.display = rawQ ? "inline-block" : "none";
+  updateActiveFilterChips();
 
   const focusAllowed = (focusCenterId && focusDegree > 0)
     ? getNeighborhoodIds(focusCenterId, focusDegree)
@@ -1470,6 +2172,7 @@ function applyFilters() {
   allNodes.forEach(n => {
     const p = n.info;
     if (focusAllowed && !focusAllowed.has(p.id)) return;
+    if (highlightDivineOnly && !n.divInfo) return;
     if (fSpoiler && !hasAppearedByTome(p, fSpoiler)) return;
     if (fTome && !parseTomesList(p.tomes).includes(fTome)) return;
     if (fFac && p.faction !== fFac) return;
@@ -1508,6 +2211,14 @@ function applyFilters() {
   const filteredNodes = allNodes.filter(n => matchedIds.has(n.id));
   const filteredEdges = allEdges.filter(e => matchedIds.has(e.from) && matchedIds.has(e.to));
 
+  if (layoutMode === "camps") {
+    network.setOptions({ physics: { enabled: false } });
+    computeCampAndIslandLayout(filteredNodes);
+  } else {
+    renderedTerritories = [];
+    network.setOptions({ physics: { enabled: true } });
+  }
+
   nodesDS.clear();
   edgesDS.clear();
   nodesDS.add(filteredNodes);
@@ -1522,8 +2233,8 @@ function applyFilters() {
     noRes.classList.remove("visible");
   }
 
-  if (filteredNodes.length > 0 && (filteredNodes.length <= 30 || focusAllowed)) {
-    network.fit({ nodes: filteredNodes.map(n => n.id), animation: true });
+  if (filteredNodes.length > 0 && (shouldFit || filteredNodes.length <= 35 || focusAllowed)) {
+    network.fit({ nodes: filteredNodes.map(n => n.id), animation: { duration: 350, easingFunction: "easeInOutQuad" } });
   }
 }
 
@@ -1534,8 +2245,9 @@ function applyFilters() {
 ].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
-  el.addEventListener(el.tagName === "INPUT" && el.type === "search" ? "input" : "change", () => {
-    applyFilters();
+  const isSearch = el.tagName === "INPUT" && el.type === "search";
+  el.addEventListener(isSearch ? "input" : "change", () => {
+    applyFilters(!isSearch);
     const sel = network.getSelectedNodes();
     if (sel.length && persoById[sel[0]]) renderPanel(persoById[sel[0]]);
   });
@@ -1543,7 +2255,7 @@ function applyFilters() {
 
 document.getElementById("btnClearSearch").addEventListener("click", () => {
   document.getElementById("search").value = "";
-  applyFilters();
+  applyFilters(true);
 });
 
 document.getElementById("btnAddFromSearch").addEventListener("click", () => {
@@ -1564,12 +2276,13 @@ document.getElementById("btnReset").addEventListener("click", () => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
+  highlightDivineOnly = false;
+  document.getElementById("btnToggleDivine").classList.remove("active");
   focusCenterId = null;
   focusDegree = 0;
   document.getElementById("focusBanner").classList.remove("visible");
   closePanel();
-  applyFilters();
-  network.fit({ animation: true });
+  applyFilters(true);
 });
 
 function closePanel() {
@@ -1579,7 +2292,7 @@ function closePanel() {
 
 window.filterByTome = function(num) {
   document.getElementById("filterTome").value = String(num);
-  applyFilters();
+  applyFilters(true);
   const sel = network.getSelectedNodes();
   if (sel.length && persoById[sel[0]]) renderPanel(persoById[sel[0]]);
 };
@@ -1588,7 +2301,7 @@ window.filterByField = function(selectId, value) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
   sel.value = value;
-  applyFilters();
+  applyFilters(true);
 };
 
 function selectCharacter(id) {
@@ -1637,6 +2350,8 @@ function renderPanel(p) {
     : "—";
 
   const affInfo = resolveAffectationAtTome(p, activeTome);
+  const divInfo = getDivineOrRepInfo(p);
+  const subIsland = getSubIslandName(p);
 
   const avatarSrc = p.portrait || makeInitialsAvatarSvg(p.nom, fac.color);
   const fallbackAvatar = makeInitialsAvatarSvg(p.nom, fac.color);
@@ -1647,12 +2362,13 @@ function renderPanel(p) {
   let html = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div class="panel-header">
-        <img class="portrait-avatar" src="${esc(avatarSrc)}" alt="${esc(p.nom)}" onerror="this.onerror=null;this.src='${fallbackAvatar}'" />
+        <img class="portrait-avatar" src="${esc(avatarSrc)}" alt="${esc(p.nom)}" style="${divInfo ? 'border-color:#f59e0b;box-shadow:0 0 14px rgba(245,158,11,0.5)' : ''}" onerror="this.onerror=null;this.src='${fallbackAvatar}'" />
         <div>
           <h2>${esc(p.nom)}</h2>
           ${p.nomVO ? `<div class="subtitle">VO : ${esc(p.nomVO)}</div>` : ""}
           <div class="badges" style="margin-top:6px">
             <span class="tag" style="background:${fac.color}">${esc(fac.label)}</span>
+            ${divInfo ? `<span class="tag tag-gold">${esc(divInfo.badge)}</span>` : ""}
             ${p.grade ? `<span class="tag" style="background:#1e3a8a">🎖️ ${esc(p.grade)}</span>` : ""}
             ${safeStatut ? `<span class="tag tag-outline">${esc(safeStatut)}</span>` : ""}
           </div>
@@ -1675,9 +2391,10 @@ function renderPanel(p) {
       <div class="aff-title">
         ${affInfo.isTimeFiltered
           ? `📍 Affectation à l'instant T (Tome ${esc(affInfo.tomeNum)} — ${esc(TOME_BY_NUM[String(affInfo.tomeNum)]?.short || '')})`
-          : `📍 Affectation actuelle / principale & Parcours militaire`}
+          : `📍 Affectation actuelle / principale & Îlot`}
       </div>
       <div class="aff-current">${esc(affInfo.currentText)}</div>
+      <div style="font-size:11.5px;color:#93c5fd">🗺️ Îlot sur la carte : <b>${esc(subIsland)}</b></div>
       ${affInfo.previousList.length ? `
         <div class="aff-prev">
           <b style="color:#cbd5e1">📜 Précédentes affectations & parcours :</b><br/>
@@ -1908,7 +2625,6 @@ function addRelationRow(targetId = "", type = "Hiérarchie / Commandement", labe
 
 document.getElementById("btnAddRelRow").addEventListener("click", () => addRelationRow());
 
-// PAR DÉFAUT : toutes les cases sont strictement vides ("") lors de l'ajout d'un personnage !
 function clearModalForm() {
   [
     "f_nom", "f_nomVO", "f_id", "f_faction", "f_peuple", "f_tribu", "f_origine",
@@ -2142,7 +2858,6 @@ document.getElementById("btnPullDrive").addEventListener("click", async () => {
       const m = freshHtml.match(/window\.INITIAL_DATA\s*=\s*(\{.*?\});\s*\nconst IS_GAS/s);
       if (m) {
         const freshData = JSON.parse(m[1]);
-        // Préserver les personnages ajoutés localement sur mobile (MALAZAN_CUSTOM_DATA) en les fusionnant !
         const savedRaw = localStorage.getItem("MALAZAN_CUSTOM_DATA");
         if (savedRaw) {
           try {
@@ -2192,7 +2907,6 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http") && !IS_
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
-// Initial load (fusionne aussi les ajouts locaux éventuels du téléphone avec la nouvelle base en ligne !)
 function mergeCustomWithInitial(initialDb) {
   const saved = localStorage.getItem("MALAZAN_CUSTOM_DATA");
   if (!saved) return initialDb;
