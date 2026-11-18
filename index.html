@@ -14,7 +14,7 @@
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 <style>
   :root {
-    --bg: #111318;
+    --bg: #0e1015;
     --panel: #191d24;
     --card: #222731;
     --border: #2c3340;
@@ -29,7 +29,7 @@
   body {
     margin: 0;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg);
+    background: radial-gradient(circle at 50% 35%, #171b24 0%, #0d0f14 100%);
     color: var(--text);
     height: 100vh;
     overflow: hidden;
@@ -71,9 +71,9 @@
   .portrait-avatar {
     width: 78px;
     height: 78px;
-    border-radius: 12px;
+    border-radius: 50%;
     object-fit: cover;
-    border: 2px solid var(--border);
+    border: 3px solid var(--border);
     background: #0d1015;
     flex-shrink: 0;
     box-shadow: 0 4px 12px rgba(0,0,0,0.45);
@@ -367,7 +367,6 @@
     gap: 10px;
     font-size: 12px;
   }
-  /* Puces des filtres actifs quand le tiroir est fermé */
   #activeFilterChips {
     pointer-events: auto;
     display: flex;
@@ -390,7 +389,6 @@
   }
   .active-chip:hover { background: #1d4ed8; }
 
-  /* Bannière Mode Focus actif */
   #focusBanner {
     display: none;
     pointer-events: auto;
@@ -451,7 +449,7 @@
     border-radius: 10px;
     font-size: 11.5px;
     border: 1px solid var(--border);
-    max-width: 295px;
+    max-width: 310px;
     max-height: 55vh;
     overflow-y: auto;
     box-shadow: 0 10px 30px rgba(0,0,0,0.55);
@@ -764,11 +762,11 @@
     <button id="btnToggleFilters" class="btn-filter" type="button" title="Ouvrir / fermer le panneau des filtres">
       ⚙️ Filtres <span id="filterCountBadge" style="display:none;background:#3b82f6;color:#fff;padding:1px 6px;border-radius:10px;font-size:10.5px">0</span>
     </button>
-    <button id="btnToggleLayout" class="btn-layout" type="button" title="Basculer entre la carte organisée par Camps & Équipages et le graphe libre">
-      🗺️ Vue : Camps & Unités
+    <button id="btnToggleLayout" class="btn-layout" type="button" title="Basculer entre les regroupements ovales par Camps / Bataillons / Escouades et le graphe libre">
+      🗺️ Vue : Ovales & Escouades
     </button>
-    <button id="btnToggleDivine" class="btn-divine" type="button" title="Mettre en avant ou isoler les Dieux et leurs Représentants (Glaive Mortel, Destriant, Bouclier-Enclume, Chevaliers…)">
-      ⚡ Dieux & Élus
+    <button id="btnToggleDivine" class="btn-divine" type="button" title="Mettre en avant ou isoler les Dieux (étoiles) et leurs Représentants">
+      ⭐ Dieux & Élus
     </button>
     <button id="btnOpenCodex" class="btn-codex" type="button">🛡️ Codex Armées & Garennes</button>
     <button id="btnOpenAdd" class="btn-primary" type="button">+ Ajouter via le Net</button>
@@ -830,10 +828,10 @@
     <div class="filter-drawer-footer">
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text)">
-          <input type="checkbox" id="toggleNodePortraits" checked /> Afficher les portraits sur les nœuds
+          <input type="checkbox" id="toggleNodePortraits" checked /> Afficher les icônes d'aperçu (portraits / médaillons)
         </label>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text)" title="En vue par Camps, atténue les traits reliant deux camps différents pour mieux lire les liens internes à chaque camp">
-          <input type="checkbox" id="toggleDimCrossEdges" /> Atténuer les liens entre camps différents
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text)" title="En vue par Camps, atténue les traits reliant deux camps différents pour mieux lire la hiérarchie interne">
+          <input type="checkbox" id="toggleDimCrossEdges" /> Atténuer les liens inter-camps
         </label>
       </div>
       <div style="display:flex;gap:8px">
@@ -1068,40 +1066,110 @@ const REGIMENT_GROUPS = [
   { value: "__GROUP__Cadre de Mages", label: "✨ Cadres de Mages" }
 ];
 
-// Détection des Dieux & de leurs Représentants (Glaive Mortel, Destriant, Bouclier-Enclume, Chevaliers, Hérauts, Grands Prêtres)
-// Ils restent dans leur camp et leur escouade, mais sont mis en avant visuellement (halo doré + sous-titre sacré) !
+// Couleur du liseré et nom de la Garenne / Haute Maison associée à chaque Dieu (ou représentant)
+function getGodWarrenStyle(p) {
+  const cid = p.id;
+  const mg = (p.maisonsGarennes || "").toLowerCase();
+  const map = {
+    "kellanved":     { color: "#a855f7", houseLabel: "Haute Maison Ombre · Meanas" },
+    "danseur":       { color: "#a855f7", houseLabel: "Haute Maison Ombre · La Corde" },
+    "apt":           { color: "#9333ea", houseLabel: "Haute Maison Ombre" },
+    "edgewalker":    { color: "#38bdf8", houseLabel: "Kurald Emurlahn · Azath" },
+    "hood":          { color: "#10b981", houseLabel: "Haute Maison Mort · Goule" },
+    "fener":         { color: "#ef4444", houseLabel: "Haute Maison Guerre · Sanglier" },
+    "treach":        { color: "#f97316", houseLabel: "Haute Maison Guerre · Tigre" },
+    "burn":          { color: "#22c55e", houseLabel: "Haute Maison Vie · Tennes & D'riss" },
+    "d-rek":         { color: "#d97706", houseLabel: "Voie de D'rek · Automne" },
+    "osserc":        { color: "#fde047", houseLabel: "Haute Maison Lumière · Kurald Thyrllan" },
+    "dieu-estropie": { color: "#e879f9", houseLabel: "Haute Maison Chaînes" },
+    "poliel":        { color: "#c026d3", houseLabel: "Haute Maison Chaînes · Peste" },
+    "mael":          { color: "#06b6d4", houseLabel: "Ruse · Demeure des Mers" },
+    "k-rul":         { color: "#f59e0b", houseLabel: "Faiseur des Voies · Toutes Garennes" },
+    "draconus":      { color: "#6366f1", houseLabel: "Kurald Galain · Ténèbres" },
+    "kilmandaros":   { color: "#fb923c", houseLabel: "Demeures Primordiales" },
+    "errastas":      { color: "#f43f5e", houseLabel: "Tuiles des Écumes · Demeure Vide" },
+    "sechul-lath":   { color: "#cbd5e1", houseLabel: "Tuiles des Écumes · Chance" },
+    "oponn":         { color: "#38bdf8", houseLabel: "Jeu des Dragons · Chance" }
+  };
+  if (map[cid]) return map[cid];
+  if (mg.includes("ombre") || mg.includes("meanas") || mg.includes("emurlahn")) return { color: "#a855f7", houseLabel: "Maison Ombre / Meanas" };
+  if (mg.includes("mort") || mg.includes("goule")) return { color: "#10b981", houseLabel: "Maison Mort / Goule" };
+  if (mg.includes("guerre")) return { color: "#ef4444", houseLabel: "Maison Guerre" };
+  if (mg.includes("ténèbres") || mg.includes("galain")) return { color: "#6366f1", houseLabel: "Maison Ténèbres / Galain" };
+  if (mg.includes("lumière") || mg.includes("thyrllan")) return { color: "#fde047", houseLabel: "Maison Lumière / Thyrllan" };
+  if (mg.includes("chaînes")) return { color: "#e879f9", houseLabel: "Maison Chaînes" };
+  if (mg.includes("vie") || mg.includes("tennes")) return { color: "#22c55e", houseLabel: "Maison Vie / Tennes" };
+  if (mg.includes("ruse") || mg.includes("mer")) return { color: "#06b6d4", houseLabel: "Garenne Ruse" };
+  return { color: "#facc15", houseLabel: p.maisonsGarennes || "Panthéon Divin" };
+}
+
 function getDivineOrRepInfo(p) {
   if (!p) return null;
   if (p.faction === "divin") {
-    return { isGod: true, isRep: false, badge: "⚡ Divinité / Ascendant", color: "#facc15" };
+    const ws = getGodWarrenStyle(p);
+    return { isGod: true, isRep: false, badge: `⭐ ${ws.houseLabel}`, color: ws.color, houseLabel: ws.houseLabel };
   }
   const blob = `${p.grade || ""} ${p.role || ""} ${p.maisonsGarennes || ""}`.toLowerCase();
+  const ws = getGodWarrenStyle(p);
   if (blob.includes("glaive mortel")) {
-    return { isGod: false, isRep: true, badge: "⚔️ Glaive Mortel", color: "#f59e0b" };
+    return { isGod: false, isRep: true, badge: "⚔️ Glaive Mortel", color: ws.color };
   }
   if (blob.includes("bouclier-enclume")) {
-    return { isGod: false, isRep: true, badge: "🛡️ Bouclier-Enclume", color: "#f59e0b" };
+    return { isGod: false, isRep: true, badge: "🛡️ Bouclier-Enclume", color: ws.color };
   }
   if (blob.includes("destriant")) {
-    return { isGod: false, isRep: true, badge: "✨ Destriant", color: "#f59e0b" };
+    return { isGod: false, isRep: true, badge: "✨ Destriant", color: ws.color };
   }
   if (blob.includes("maître du jeu")) {
     return { isGod: false, isRep: true, badge: "🎴 Maître du Jeu", color: "#f59e0b" };
   }
   if (blob.includes("chevalier de haute maison") || blob.includes("chevalier des ténèbres") || blob.includes("chevalier des chaînes") || blob.includes("chevalier de la mort") || blob.includes("ex-chevalier de la mort")) {
-    return { isGod: false, isRep: true, badge: "👑 Chevalier de Maison", color: "#f59e0b" };
+    return { isGod: false, isRep: true, badge: "👑 Chevalier de Maison", color: ws.color };
   }
   if (blob.includes("sha'ik") || blob.includes("épée maudite") || blob.includes("empereur des mille mers")) {
-    return { isGod: false, isRep: true, badge: "👑 Élu / Champion lié", color: "#f59e0b" };
+    return { isGod: false, isRep: true, badge: "👑 Élu / Champion lié", color: ws.color };
   }
   if (blob.includes("grand prêtre") || blob.includes("prêtresse de l'errant") || blob.includes("prêtre de hood") || blob.includes("prêtre de goule") || blob.includes("héraut") || blob.includes("roi de la mort")) {
-    return { isGod: false, isRep: true, badge: "🔮 Prêtre / Héraut Divin", color: "#f59e0b" };
+    return { isGod: false, isRep: true, badge: "🔮 Prêtre / Héraut Divin", color: ws.color };
   }
   return null;
 }
 
-// Détermine dans quel sous-îlot (Armée, Escouade, Équipage, Compagnie, Groupe) ranger un personnage au sein de son Camp
-function getSubIslandName(p) {
+// Score de grade militaire/hiérarchique pour identifier automatiquement le Gradé en tête de chaque ovale d'escouade/bataillon
+function getRankScore(p) {
+  const g = `${p.grade || ""} ${p.role || ""}`.toLowerCase();
+  if (["laseen", "kellanved", "anomander-rake", "caladan", "ezgar-diskanar", "hannan-mosag", "coltaine", "k-azz", "brukhalian", "kruppe", "logros", "mappo", "k-rul"].includes(p.id)) return 100;
+  if (g.includes("impératrice") || g.includes("empereur") || g.includes("roi") || g.includes("reine") || g.includes("seigneur")) return 95;
+  if (g.includes("adjointe") || g.includes("premier glaive") || g.includes("haut poing") || g.includes("grand amiral") || g.includes("généralissime") || g.includes("glaive mortel")) return 90;
+  if (g.includes("poing") || g.includes("amiral") || g.includes("grand mage") || g.includes("ceda") || g.includes("atri-preda") || g.includes("chancelier")) return 80;
+  if (g.includes("commandant") || g.includes("maîtresse de la guilde")) return 75;
+  if (g.includes("capitaine") || g.includes("finadd") || g.includes("bouclier-enclume") || g.includes("destriant")) return 70;
+  if (g.includes("lieutenant")) return 60;
+  if (g.includes("sergent-major") || g.includes("maître-sergent")) return 55;
+  if (g.includes("sergent")) return 50;
+  if (g.includes("caporal")) return 40;
+  if (g.includes("mage")) return 30;
+  return 10;
+}
+
+// Chef suprême de chaque Faction (au centre du grand ovale du Camp)
+const FACTION_CHIEFS = {
+  "empire": "laseen",
+  "wickien": "coltaine",
+  "coalition": "caladan",
+  "darujhistan": "kruppe",
+  "luneNoire": "anomander-rake",
+  "edur": "hannan-mosag",
+  "lether": "ezgar-diskanar",
+  "independant": "k-azz",
+  "t-lan-imass": "logros",
+  "innommes": "mappo",
+  "divin": "k-rul"
+};
+
+// Détermine dans quel ovale d'unité (Armée / Bataillon / Escouade / Équipage) ranger chaque personnage
+// Retourne { name, tier, parentLeaderId, defaultLeaderId }
+function getSubUnitSpec(p) {
   const f = p.faction || "independant";
   const arm = (p.armee || "").toLowerCase();
   const reg = (p.regiment || "").toLowerCase();
@@ -1111,146 +1179,156 @@ function getSubIslandName(p) {
 
   if (f === "divin") {
     if (["k-rul", "mael", "draconus", "kilmandaros", "errastas", "sechul-lath", "edgewalker", "burn"].includes(cid)) {
-      return "🌌 Dieux Anciens (Elder Gods)";
+      return { name: "🌌 Dieux Anciens (Elder Gods)", tier: 0, leaderId: "k-rul", parentId: null };
     }
-    return "👑 Souverains des Hautes Maisons & Panthéon";
+    return { name: "👑 Souverains des Hautes Maisons", tier: 1, leaderId: "kellanved", parentId: "k-rul" };
   }
 
   if (f === "empire") {
-    if (arm.includes("2e armée") || reg.includes("brûleurs de ponts")) {
-      if (uni.includes("9e escouade") || cid === "ganoes-paran") return "🔥 2e Armée · Brûleurs de Ponts (9e Escouade)";
-      if (uni.includes("7e escouade")) return "🔥 2e Armée · Brûleurs de Ponts (7e Escouade)";
-      return "🦅 2e Armée (L'Ost de Unbras) · État-major & Cadre";
-    }
-    if (arm.includes("7e armée")) {
-      return "🐺 7e Armée (La Chaîne des Chiens)";
-    }
-    if (arm.includes("14e armée")) {
-      if (uni.includes("4e escouade")) return "🦴 14e Armée · 4e Escouade (Violain / Archet)";
-      if (uni.includes("5e escouade")) return "🦴 14e Armée · 5e Escouade (Gesler & Ouragan)";
-      if (uni.includes("7e escouade") || uni.includes("8e escouade") || reg.includes("2e compagnie")) return "🦴 14e Armée · 2e Compagnie, 7e & 8e Escouades (Ashok / Hellian)";
-      if (uni.includes("9e escouade") || uni.includes("12e escouade") || uni.includes("13e escouade")) return "🦴 14e Armée · 9e & 13e Escouades (Baume & Urb)";
-      if (reg.includes("nouveaux brûleurs")) return "🔥 14e Armée · Nouveaux Brûleurs de Ponts";
-      return "👑 14e Armée (Les Osseleurs) · État-major & Légions";
+    // Centre du camp : Haut Commandement Impérial (autour de l'Impératrice Laseen)
+    if (["laseen", "lorn", "tayschrenn", "dassem-ultor", "mallick-rel", "toc-l-ancien", "brave-dent"].includes(cid)) {
+      return { name: "👑 Cour Impériale & Vieille Garde", tier: 0, leaderId: "laseen", parentId: null };
     }
     if (arm.includes("griffe") || arm.includes("serre") || reg.includes("griffe") || reg.includes("serre")) {
-      return "🗡️ La Griffe & La Serre (Services Secrets)";
+      return { name: "🗡️ La Griffe & La Serre", tier: 1, leaderId: "topper", parentId: "laseen" };
     }
     if (arm.includes("marine impériale")) {
-      return "⚓ Marine Impériale (Flotte Malazéenne)";
+      return { name: "⚓ Marine Impériale (Flotte)", tier: 1, leaderId: "nok", parentId: "laseen" };
     }
-    return "🏛️ Haut Commandement Impérial & Vieille Garde";
+    if (arm.includes("7e armée")) {
+      return { name: "🐺 7e Armée (La Chaîne des Chiens)", tier: 1, leaderId: "duiker", parentId: "laseen" };
+    }
+    if (arm.includes("2e armée") || reg.includes("brûleurs de ponts")) {
+      if (uni.includes("9e escouade") || cid === "ganoes-paran") {
+        return { name: "🔥 Brûleurs de Ponts · 9e Escouade", tier: 2, leaderId: "mesangeai", parentId: "dujek" };
+      }
+      if (uni.includes("7e escouade")) {
+        return { name: "🔥 Brûleurs de Ponts · 7e Escouade", tier: 2, leaderId: "antisy", parentId: "mesangeai" };
+      }
+      return { name: "🦅 2e Armée (Ost de Unbras) · État-major & Cadre", tier: 1, leaderId: "dujek", parentId: "laseen" };
+    }
+    if (arm.includes("14e armée")) {
+      if (uni.includes("4e escouade")) {
+        return { name: "🦴 14e Armée · 4e Escouade (Violain)", tier: 2, leaderId: "violain", parentId: "faradan-sort" };
+      }
+      if (uni.includes("5e escouade")) {
+        return { name: "🦴 14e Armée · 5e Escouade (Gesler)", tier: 2, leaderId: "gesler", parentId: "faradan-sort" };
+      }
+      if (reg.includes("2e compagnie") || uni.includes("7e escouade")) {
+        return { name: "⚔️ 14e Armée · 2e Cie & 7e Escouade (Ashok)", tier: 2, leaderId: "affable", parentId: "keneb" };
+      }
+      if (uni.includes("8e escouade")) {
+        return { name: "🦴 14e Armée · 8e Escouade (Hellian)", tier: 2, leaderId: "hellian", parentId: "faradan-sort" };
+      }
+      if (uni.includes("9e escouade") || uni.includes("12e escouade") || uni.includes("13e escouade")) {
+        return { name: "🦴 14e Armée · 9e & 13e Escouades (Baume & Urb)", tier: 2, leaderId: "baume", parentId: "faradan-sort" };
+      }
+      if (reg.includes("nouveaux brûleurs")) {
+        return { name: "🔥 14e Armée · Nouveaux Brûleurs de Ponts", tier: 2, leaderId: "bombasse", parentId: "esquive" };
+      }
+      return { name: "👑 14e Armée (Les Osseleurs) · État-major & Légions", tier: 1, leaderId: "tavore-paran", parentId: "laseen" };
+    }
+    return { name: "🏛️ Garnisons & Cadres Impériaux", tier: 1, leaderId: "tayschrenn", parentId: "laseen" };
   }
 
   if (f === "wickien") {
     if (uni.includes("sorcier") || rol.includes("sorcier") || rol.includes("sorcière")) {
-      return "✨ Cadre des Sorciers Wickiens";
+      return { name: "✨ Cadre des Sorciers Wickiens", tier: 1, leaderId: "sormo", parentId: "coltaine" };
     }
-    return "🐎 Cavalerie des Clans Wickiens (Clan du Corbeau)";
+    return { name: "🐎 Commandement & Cavalerie Wickienne", tier: 0, leaderId: "coltaine", parentId: null };
   }
 
   if (f === "coalition") {
     if (arm.includes("apocalypse") || arm.includes("tourbillon")) {
-      return "🌪️ Armée de l'Apocalypse (Rébellion du Tourbillon)";
+      return { name: "🌪️ Armée de l'Apocalypse (Tourbillon)", tier: 1, leaderId: "felisin-paran", parentId: "caladan" };
     }
-    return "🔨 Ost de Genabackis (Coalition de Caladan Rumin)";
+    return { name: "🔨 Ost de Genabackis (Caladan Rumin)", tier: 0, leaderId: "caladan", parentId: null };
   }
 
   if (f === "darujhistan") {
     if (arm.includes("guilde des assassins") || reg.includes("guilde des assassins")) {
-      return "🌑 Guilde des Assassins de Darujhistan";
+      return { name: "🌑 Guilde des Assassins", tier: 1, leaderId: "vorcan", parentId: "kruppe" };
     }
     if (["kruppe", "coll", "murillio", "brise-cercle"].includes(cid)) {
-      return "🍺 Taverne du Phénix & Réseau de l'Anguille";
+      return { name: "🍺 Taverne du Phénix & Cercle de l'Anguille", tier: 0, leaderId: "kruppe", parentId: null };
     }
-    return "🏛️ Cabale T'orrud & Conseil des Nobles";
+    return { name: "🏛️ Cabale T'orrud & Conseil des Nobles", tier: 1, leaderId: "baruk", parentId: "kruppe" };
   }
 
   if (f === "luneNoire") {
     if (["silchas-ruin", "nimander", "skintick", "nenanda", "aranatha", "kedeviss", "desra", "clip"].includes(cid)) {
-      return "🗡️ Lignée de Rake & Pèlerins Tiste Andii";
+      return { name: "🗡️ Lignée de Rake & Pèlerins Andii", tier: 1, leaderId: "silchas-ruin", parentId: "anomander-rake" };
     }
-    return "🌙 Cour de Sangdelune & Corail Noir";
+    return { name: "🌙 Cour de Sangdelune & Corail Noir", tier: 0, leaderId: "anomander-rake", parentId: null };
   }
 
   if (f === "edur") {
-    if (cid.includes("sengar") || cid === "mayen") {
-      return "⚔️ Lignée & Famille Sengar";
+    if (cid.includes("sengar") && cid !== "rhulad-sengar" || cid === "mayen") {
+      return { name: "⚔️ Lignée & Guerriers Sengar", tier: 1, leaderId: "fear-sengar", parentId: "rhulad-sengar" };
     }
-    return "🌑 Cour du Roi Sorcier & Culte des Écumes";
+    return { name: "🌑 Cour de l'Empereur & du Roi Sorcier", tier: 0, leaderId: "rhulad-sengar", parentId: null };
   }
 
   if (f === "lether") {
     if (reg.includes("inextinguible gratitude") || arm.includes("pirate")) {
-      return "🏴‍☠️ Équipage de l'Inextinguible Gratitude";
+      return { name: "🏴‍☠️ Équipage de l'Inextinguible Gratitude", tier: 1, leaderId: "shurq-elalle", parentId: "tehol-beddict" };
     }
     if (arm.includes("dératiseurs") || arm.includes("patriotistes") || arm.includes("marchands")) {
-      return "🐀 Guilde des Dératiseurs & Patriotistes";
+      return { name: "🐀 Guilde des Dératiseurs & Patriotistes", tier: 1, leaderId: "ormly", parentId: "tehol-beddict" };
     }
     if (["tehol-beddict", "seren-pedac", "hull-beddict"].includes(cid)) {
-      return "💰 Réseau Clandestin de Tehol & Frères Beddict";
+      return { name: "💰 Réseau de Tehol & Frères Beddict", tier: 1, leaderId: "tehol-beddict", parentId: "ezgar-diskanar" };
     }
-    return "👑 Cour & Garde Royale de Letheras";
+    return { name: "👑 Cour & Garde Royale de Letheras", tier: 0, leaderId: "ezgar-diskanar", parentId: null };
   }
 
   if (f === "independant") {
     if (arm.includes("garde pourpre") || cid === "twisp") {
-      return "🛡️ La Garde Pourpre (Les Assermentés)";
+      return { name: "🛡️ La Garde Pourpre (Les Assermentés)", tier: 0, leaderId: "k-azz", parentId: null };
     }
     if (arm.includes("épées grises")) {
-      return "⚔️ Compagnie des Épées Grises (Capustan)";
+      return { name: "⚔️ Compagnie des Épées Grises", tier: 1, leaderId: "brukhalian", parentId: null };
     }
     if (arm.includes("ombre")) {
-      return "🌑 Cour & Compagnie de l'Ombre";
+      return { name: "🌑 Cour & Compagnie de l'Ombre", tier: 1, leaderId: "minala", parentId: null };
     }
     if (["yan-tovis", "yedan-derryg", "brullyg", "karpette", "tenace"].includes(cid)) {
-      return "🌊 Peuple des Trembles (The Shake)";
+      return { name: "🌊 Peuple des Trembles (The Shake)", tier: 1, leaderId: "yan-tovis", parentId: null };
     }
     if (["bauchelain", "korbal-broach", "emancipor", "gruntle", "stonny", "keruli"].includes(cid)) {
-      return "💀 Nécromanciens & Caravane de Capustan";
+      return { name: "💀 Nécromanciens & Caravane de Capustan", tier: 1, leaderId: "gruntle", parentId: null };
     }
     if (["icarium", "gothos", "raest", "marmite", "tool", "onrack", "kilava", "pran-chole"].includes(cid)) {
-      return "🏛️ Jaghuts, Imass & Gardiens de l'Azath";
+      return { name: "🏛️ Jaghuts, Imass & Gardiens Azath", tier: 1, leaderId: "icarium", parentId: null };
     }
-    return "🧭 Champions, Ascendants & Voyageurs Solitaires";
+    return { name: "🧭 Champions & Voyageurs Solitaires", tier: 1, leaderId: "karsa", parentId: null };
   }
 
   if (f === "t-lan-imass") {
-    return "🔥 Clans T'lan Imass (Logros, Kron & Non-Liés)";
+    return { name: "🔥 Clans T'lan Imass (Logros, Kron & Non-Liés)", tier: 0, leaderId: "logros", parentId: null };
   }
 
   if (f === "innommes") {
-    return "🔮 Ordre des Innommés (Gardiens d'Icarium)";
+    return { name: "🔮 Ordre des Innommés (Gardiens de l'Azath)", tier: 0, leaderId: "mappo", parentId: null };
   }
 
-  return "⛺ Groupe principal";
+  return { name: "⛺ Unité principale", tier: 0, leaderId: cid, parentId: null };
 }
 
-// Ordre et colonnes macroscopiques des Territoires (garantit zéro chevauchement quelle que soit la taille des camps)
-const MACRO_COLUMNS = [
-  ["empire", "wickien"],
-  ["divin", "independant", "innommes", "t-lan-imass"],
-  ["coalition", "darujhistan", "luneNoire", "lether", "edur"]
-];
-const CAMP_ISLAND_COLS = {
-  "empire": 3,
-  "divin": 2,
-  "independant": 2,
-  "lether": 2,
-  "edur": 2,
-  "luneNoire": 2,
-  "darujhistan": 2,
-  "coalition": 2,
-  "wickien": 2
-};
-
-let layoutMode = "camps"; // "camps" ou "free"
+let layoutMode = "camps"; // "camps" (ovales organiques) ou "free" (physique libre)
 let highlightDivineOnly = false;
-let renderedTerritories = []; // [{ factionId, label, color, x, y, w, h, islands: [{ title, x, y, w, h }] }]
+let renderedTerritories = []; // [{ factionId, label, color, cx, cy, rx, ry, islands: [{ title, cx, cy, rx, ry, leaderId }] }]
+let generatedHierarchyEdges = []; // Liens hiérarchiques auto-générés via les gradés vers le chef de faction
 
-// Calcule les coordonnées exactes (x, y) de chaque personnage dans son sous-îlot et dans son Camp (sans aucun chevauchement)
+// Calcule un placement 100% OVALE et RADIAL :
+// 1. Dans chaque escouade/bataillon : le Gradé est en tête/centre de l'ovale, ses soldats en anneau elliptique autour de lui.
+// 2. Dans chaque Camp : le Chef de Faction (et son unité centrale) est au cœur du grand ovale, les bataillons/escouades gravitent en orbite elliptique autour.
+// 3. Sur la carte : le Panthéon (Divinités étoilées) trône au centre-haut et les grands ovales des Camps sont disposés en constellation sans chevauchement.
 function computeCampAndIslandLayout(nodesList) {
   renderedTerritories = [];
+  generatedHierarchyEdges = [];
+  const visibleNodeById = Object.fromEntries(nodesList.map(n => [n.id, n]));
+
   const byFaction = {};
   nodesList.forEach(n => {
     const f = n.info.faction || "independant";
@@ -1258,168 +1336,321 @@ function computeCampAndIslandLayout(nodesList) {
     byFaction[f].push(n);
   });
 
-  const NODE_W = 172;
-  const NODE_H = 128;
-  const ISLAND_PAD_X = 46;
-  const ISLAND_PAD_Y = 52;
-  const ISLAND_GAP_X = 64;
-  const ISLAND_GAP_Y = 68;
-  const CAMP_PAD_X = 72;
-  const CAMP_PAD_Y_TOP = 92;
-  const CAMP_PAD_Y_BOT = 68;
+  // 1. Construire la géométrie interne (en ovales) de chaque Camp autour de (0, 0)
+  const campOvals = {};
 
-  // 1. Construire chaque Camp en coordonnées locales (0, 0)
-  const campBoxes = {};
   Object.entries(byFaction).forEach(([fid, fNodes]) => {
     const facMeta = (DATA.factions && DATA.factions[fid]) || { label: fid, color: "#64748b" };
-
-    const byIsland = {};
+    const bySub = {};
     fNodes.forEach(n => {
-      const isl = getSubIslandName(n.info);
-      if (!byIsland[isl]) byIsland[isl] = [];
-      byIsland[isl].push(n);
+      const spec = getSubUnitSpec(n.info);
+      if (!bySub[spec.name]) {
+        bySub[spec.name] = { title: spec.name, tier: spec.tier, prefLeaderId: spec.leaderId, parentId: spec.parentId, nodes: [] };
+      }
+      bySub[spec.name].nodes.push(n);
     });
 
-    const islandBlocks = Object.entries(byIsland).map(([title, iNodes]) => {
-      iNodes.sort((a, b) => {
-        const da = getDivineOrRepInfo(a.info) ? 1 : 0;
-        const db = getDivineOrRepInfo(b.info) ? 1 : 0;
-        if (da !== db) return db - da;
+    const subOvals = Object.values(bySub).map(sub => {
+      // Trier par grade décroissant : le plus gradé est le chef de cet ovale d'unité !
+      sub.nodes.sort((a, b) => {
+        if (a.id === sub.prefLeaderId) return -1;
+        if (b.id === sub.prefLeaderId) return 1;
+        const rDiff = getRankScore(b.info) - getRankScore(a.info);
+        if (rDiff !== 0) return rDiff;
         return a.info.nom.localeCompare(b.info.nom);
       });
-      const cols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(iNodes.length))));
-      const rows = Math.ceil(iNodes.length / cols);
-      const w = Math.max(295, cols * NODE_W + ISLAND_PAD_X * 2);
-      const h = rows * NODE_H + ISLAND_PAD_Y * 2;
-      return { title, nodes: iNodes, cols, rows, w, h };
-    });
 
-    const maxIslCols = CAMP_ISLAND_COLS[fid] || 1;
-    const numCols = Math.min(maxIslCols, islandBlocks.length);
-    const colWidths = new Array(numCols).fill(0);
-    const colHeights = new Array(numCols).fill(0);
-    const colItems = Array.from({ length: numCols }, () => []);
+      const leaderNode = sub.nodes[0];
+      leaderNode.isUnitLeader = true;
+      const others = sub.nodes.slice(1);
+      const count = sub.nodes.length;
 
-    islandBlocks.forEach(blk => {
-      let bestCol = 0;
-      for (let c = 1; c < numCols; c++) {
-        if (colHeights[c] < colHeights[bestCol]) bestCol = c;
+      // Calcul des rayons (rx, ry) de l'ovale de cette escouade / unité
+      let rx, ry;
+      if (count === 1) {
+        rx = 135;
+        ry = 105;
+        leaderNode._subX = 0;
+        leaderNode._subY = 8;
+      } else if (count <= 8) {
+        rx = Math.max(210, 125 + others.length * 24);
+        ry = Math.max(165, 100 + others.length * 18);
+        // Le gradé au centre de son ovale d'escouade, ses soldats en ellipse autour de lui
+        leaderNode._subX = 0;
+        leaderNode._subY = 6;
+        const ringRx = rx - 78;
+        const ringRy = ry - 64;
+        others.forEach((m, idx) => {
+          const angle = -Math.PI / 2 + (2 * Math.PI * idx) / others.length;
+          m._subX = Math.cos(angle) * ringRx;
+          m._subY = 6 + Math.sin(angle) * ringRy;
+        });
+      } else {
+        // 2 anneaux elliptiques concentriques autour du gradé
+        const innerCount = Math.min(7, Math.ceil(others.length * 0.45));
+        const outerCount = others.length - innerCount;
+        rx = Math.max(330, 210 + outerCount * 16);
+        ry = Math.max(260, 170 + outerCount * 12);
+        leaderNode._subX = 0;
+        leaderNode._subY = 8;
+        const inRx = rx * 0.43;
+        const inRy = ry * 0.43;
+        const outRx = rx - 82;
+        const outRy = ry - 68;
+        others.slice(0, innerCount).forEach((m, idx) => {
+          const angle = -Math.PI / 2 + (2 * Math.PI * idx) / innerCount;
+          m._subX = Math.cos(angle) * inRx;
+          m._subY = 8 + Math.sin(angle) * inRy;
+        });
+        others.slice(innerCount).forEach((m, idx) => {
+          const angle = -Math.PI / 2 + (2 * Math.PI * idx) / outerCount + (Math.PI / outerCount);
+          m._subX = Math.cos(angle) * outRx;
+          m._subY = 8 + Math.sin(angle) * outRy;
+        });
       }
-      colItems[bestCol].push(blk);
-      colWidths[bestCol] = Math.max(colWidths[bestCol], blk.w);
-      colHeights[bestCol] += blk.h + ISLAND_GAP_Y;
+
+      // Relier chaque membre de l'escouade à son Gradé (chef d'ovale)
+      others.forEach(m => {
+        generatedHierarchyEdges.push({
+          a: leaderNode.id,
+          b: m.id,
+          type: "Hiérarchie / Commandement",
+          label: `Chef d'unité (${sub.title.replace(/^[^\s]+\s/, "")})`,
+          isAutoHierarchy: true
+        });
+      });
+
+      return {
+        title: sub.title,
+        tier: sub.tier,
+        leaderNode,
+        parentId: sub.parentId,
+        nodes: sub.nodes,
+        rx,
+        ry
+      };
     });
 
-    const totalW = colWidths.reduce((a, b) => a + b, 0) + Math.max(0, numCols - 1) * ISLAND_GAP_X + CAMP_PAD_X * 2;
-    const totalH = Math.max(...colHeights, 160) - ISLAND_GAP_Y + CAMP_PAD_Y_TOP + CAMP_PAD_Y_BOT;
+    // Identifier l'ovale central (tier 0 : Chef de Faction) et les ovales satellites (Armées / Bataillons / Escouades)
+    subOvals.sort((a, b) => a.tier - b.tier);
+    const centerOval = subOvals[0];
+    const satelliteOvals = subOvals.slice(1);
 
-    const localIslands = [];
-    let curColX = CAMP_PAD_X;
-    for (let c = 0; c < numCols; c++) {
-      let curY = CAMP_PAD_Y_TOP;
-      const cW = colWidths[c];
-      colItems[c].forEach(blk => {
-        const islX = curColX + (cW - blk.w) / 2;
-        const islY = curY;
-
-        blk.nodes.forEach((n, idx) => {
-          const r = Math.floor(idx / blk.cols);
-          const col = idx % blk.cols;
-          const itemsInThisRow = (r === blk.rows - 1) ? (blk.nodes.length - r * blk.cols) : blk.cols;
-          const rowW = itemsInThisRow * NODE_W;
-          const rowStartX = islX + (blk.w - rowW) / 2 + NODE_W / 2;
-          n._relX = rowStartX + col * NODE_W;
-          n._relY = islY + ISLAND_PAD_Y + r * NODE_H + NODE_H / 2 - 10;
-        });
-
-        localIslands.push({
-          title: blk.title,
-          relX: islX,
-          relY: islY,
-          w: blk.w,
-          h: blk.h,
-          nodes: blk.nodes
-        });
-        curY += blk.h + ISLAND_GAP_Y;
-      });
-      curColX += cW + ISLAND_GAP_X;
+    // Relier le Gradé de chaque ovale satellite vers son supérieur (ou le Chef de Faction)
+    const factionChiefId = (visibleNodeById[FACTION_CHIEFS[fid]] && FACTION_CHIEFS[fid]) || centerOval.leaderNode.id;
+    if (visibleNodeById[factionChiefId]) {
+      visibleNodeById[factionChiefId].isFactionChief = true;
     }
 
-    campBoxes[fid] = {
+    satelliteOvals.forEach(sat => {
+      const targetParentId = (sat.parentId && visibleNodeById[sat.parentId]) ? sat.parentId : factionChiefId;
+      if (targetParentId && targetParentId !== sat.leaderNode.id) {
+        generatedHierarchyEdges.push({
+          a: targetParentId,
+          b: sat.leaderNode.id,
+          type: "Hiérarchie / Commandement",
+          label: `Chaîne de commandement (${facMeta.label})`,
+          isAutoHierarchy: true
+        });
+      }
+    });
+
+    // Placement radial des sous-ovales à l'intérieur du grand Ovale du Camp
+    if (satelliteOvals.length === 0) {
+      centerOval.relCx = 0;
+      centerOval.relCy = 18;
+    } else if (satelliteOvals.length <= 7) {
+      centerOval.relCx = 0;
+      centerOval.relCy = 18;
+      // Calcul du rayon d'orbite pour que les sous-ovales ne se chevauchent pas entre eux ni avec l'ovale central
+      const maxSatRx = Math.max(...satelliteOvals.map(s => s.rx));
+      const maxSatRy = Math.max(...satelliteOvals.map(s => s.ry));
+      const minOrbitFromCenterX = centerOval.rx + maxSatRx + 85;
+      const minOrbitFromCenterY = centerOval.ry + maxSatRy + 80;
+      const circumferenceNeed = satelliteOvals.reduce((acc, s) => acc + Math.max(s.rx, s.ry) * 2 + 75, 0);
+      const minOrbitFromCircum = circumferenceNeed / (2 * Math.PI);
+
+      const orbitRx = Math.max(minOrbitFromCenterX, minOrbitFromCircum * 1.15);
+      const orbitRy = Math.max(minOrbitFromCenterY, minOrbitFromCircum * 0.92);
+
+      satelliteOvals.forEach((sat, idx) => {
+        const angle = -Math.PI / 2 + (2 * Math.PI * idx) / satelliteOvals.length;
+        sat.relCx = Math.cos(angle) * orbitRx;
+        sat.relCy = 18 + Math.sin(angle) * orbitRy;
+      });
+    } else {
+      // Pour l'Empire Malazéen (qui a ~10 sous-ovales : État-major, Armées et Escouades) :
+      // Anneau intérieur = Commandements d'Armées / Branches (tier 1)
+      // Anneau extérieur = Escouades / Compagnies (tier 2) placées en arc près de leur armée !
+      centerOval.relCx = 0;
+      centerOval.relCy = 18;
+      const ring1 = satelliteOvals.filter(s => s.tier === 1);
+      const ring2 = satelliteOvals.filter(s => s.tier >= 2);
+
+      const r1Circum = ring1.reduce((acc, s) => acc + Math.max(s.rx, s.ry) * 2 + 80, 0) / (2 * Math.PI);
+      const r1Rx = Math.max(centerOval.rx + Math.max(...ring1.map(s => s.rx), 220) + 110, r1Circum * 1.15);
+      const r1Ry = Math.max(centerOval.ry + Math.max(...ring1.map(s => s.ry), 180) + 95, r1Circum * 0.92);
+      ring1.forEach((sat, idx) => {
+        const angle = -Math.PI / 2 + (2 * Math.PI * idx) / Math.max(1, ring1.length);
+        sat.relCx = Math.cos(angle) * r1Rx;
+        sat.relCy = 18 + Math.sin(angle) * r1Ry;
+      });
+
+      const r2Circum = ring2.reduce((acc, s) => acc + Math.max(s.rx, s.ry) * 2 + 80, 0) / (2 * Math.PI);
+      const r2Rx = Math.max(r1Rx + Math.max(...ring2.map(s => s.rx), 240) * 2 + 125, r2Circum * 1.15);
+      const r2Ry = Math.max(r1Ry + Math.max(...ring2.map(s => s.ry), 190) * 2 + 105, r2Circum * 0.92);
+      ring2.forEach((sat, idx) => {
+        const angle = -Math.PI / 2 + (2 * Math.PI * idx) / Math.max(1, ring2.length) + (Math.PI / Math.max(2, ring2.length));
+        sat.relCx = Math.cos(angle) * r2Rx;
+        sat.relCy = 18 + Math.sin(angle) * r2Ry;
+      });
+    }
+
+    // Relaxation anti-chevauchement entre les sous-ovales d'un même Camp (en gardant centerOval au centre)
+    for (let it = 0; it < 45; it++) {
+      let subMoved = false;
+      for (let i = 0; i < subOvals.length; i++) {
+        for (let j = i + 1; j < subOvals.length; j++) {
+          const A = subOvals[i];
+          const B = subOvals[j];
+          const dx = B.relCx - A.relCx;
+          const dy = B.relCy - A.relCy;
+          const minRx = A.rx + B.rx + 65;
+          const minRy = A.ry + B.ry + 65;
+          const nd = Math.sqrt((dx * dx) / (minRx * minRx) + (dy * dy) / (minRy * minRy));
+          if (nd < 1) {
+            const push = (1 - nd) * 0.55;
+            const ang = Math.atan2(dy || 1, dx || 1);
+            const px = Math.cos(ang) * minRx * push;
+            const py = Math.sin(ang) * minRy * push;
+            if (i === 0) {
+              B.relCx += px * 2;
+              B.relCy += py * 2;
+            } else {
+              A.relCx -= px;
+              A.relCy -= py;
+              B.relCx += px;
+              B.relCy += py;
+            }
+            subMoved = true;
+          }
+        }
+      }
+      if (!subMoved) break;
+    }
+
+    // Calcul du grand Ovale englobant tout le Camp
+    let maxExtentX = 240;
+    let maxExtentY = 200;
+    subOvals.forEach(so => {
+      maxExtentX = Math.max(maxExtentX, Math.abs(so.relCx) + so.rx + 95);
+      maxExtentY = Math.max(maxExtentY, Math.abs(so.relCy) + so.ry + 110);
+    });
+
+    campOvals[fid] = {
       factionId: fid,
       label: facMeta.label,
       color: facMeta.color,
-      w: totalW,
-      h: totalH,
-      localIslands
+      rx: maxExtentX,
+      ry: maxExtentY,
+      subOvals
     };
   });
 
-  // 2. Assembler les Camps par macro-colonnes avec espacement garanti
-  const MACRO_GAP_X = 220;
-  const MACRO_GAP_Y = 170;
+  // 2. Disposer les grands Ovales des Camps en constellation organique autour du Panthéon (sans aucun chevauchement)
+  //Angles privilégiés par camp pour une géographie harmonieuse
+  const PREFERRED_ANGLES = {
+    "divin":       -Math.PI / 2,       // Au sommet (Nord)
+    "coalition":   -Math.PI * 0.23,    // Nord-Est
+    "darujhistan":  0,                 // Est
+    "luneNoire":    Math.PI * 0.22,    // Sud-Est
+    "t-lan-imass":  Math.PI * 0.40,    // Sud-Sud-Est
+    "independant":  Math.PI * 0.53,    // Sud
+    "innommes":     Math.PI * 0.68,    // Sud-Sud-Ouest
+    "edur":         Math.PI * 0.82,    // Sud-Ouest
+    "lether":       Math.PI,           // Ouest
+    "wickien":     -Math.PI * 0.68,    // Nord-Nord-Ouest
+    "empire":      -Math.PI * 0.84     // Nord-Ouest (grand ovale)
+  };
 
-  const placedFids = new Set();
-  const activeMacroCols = [];
-
-  MACRO_COLUMNS.forEach(colFids => {
-    const boxes = colFids.filter(fid => campBoxes[fid]).map(fid => {
-      placedFids.add(fid);
-      return campBoxes[fid];
+  const fids = Object.keys(campOvals);
+  if (fids.length === 1) {
+    const only = campOvals[fids[0]];
+    only.cx = 0;
+    only.cy = 0;
+  } else {
+    // Placer l'Empire ou le Panthéon et disposer les autres en couronne elliptique espacée
+    fids.sort((a, b) => (PREFERRED_ANGLES[a] ?? 0) - (PREFERRED_ANGLES[b] ?? 0));
+    fids.forEach((fid, idx) => {
+      const c = campOvals[fid];
+      const ang = PREFERRED_ANGLES[fid] ?? (-Math.PI / 2 + (2 * Math.PI * idx) / fids.length);
+      const baseDist = fid === "divin" ? 1350 : 2400;
+      c.cx = Math.cos(ang) * baseDist * 1.25;
+      c.cy = Math.sin(ang) * baseDist;
     });
-    if (boxes.length) activeMacroCols.push(boxes);
-  });
 
-  // Ajouter toute éventuelle faction supplémentaire non listée
-  const extraBoxes = Object.keys(campBoxes).filter(fid => !placedFids.has(fid)).map(fid => campBoxes[fid]);
-  if (extraBoxes.length) {
-    if (activeMacroCols.length) activeMacroCols[activeMacroCols.length - 1].push(...extraBoxes);
-    else activeMacroCols.push(extraBoxes);
+    // Relaxation itérative anti-chevauchement entre les grands ovales de Camps (marge 180px)
+    for (let iter = 0; iter < 80; iter++) {
+      let moved = false;
+      for (let i = 0; i < fids.length; i++) {
+        for (let j = i + 1; j < fids.length; j++) {
+          const A = campOvals[fids[i]];
+          const B = campOvals[fids[j]];
+          const dx = B.cx - A.cx;
+          const dy = B.cy - A.cy;
+          const minRx = A.rx + B.rx + 180;
+          const minRy = A.ry + B.ry + 180;
+          const normDist = Math.sqrt((dx * dx) / (minRx * minRx) + (dy * dy) / (minRy * minRy));
+          if (normDist < 1) {
+            const push = (1 - normDist) * 0.55;
+            const ang = Math.atan2(dy || 1, dx || 1);
+            const px = Math.cos(ang) * minRx * push;
+            const py = Math.sin(ang) * minRy * push;
+            A.cx -= px;
+            A.cy -= py;
+            B.cx += px;
+            B.cy += py;
+            moved = true;
+          }
+        }
+      }
+      if (!moved) break;
+    }
   }
 
-  let macroX = 0;
-  activeMacroCols.forEach(colBoxes => {
-    const colW = Math.max(...colBoxes.map(b => b.w));
-    let macroY = 0;
-
-    colBoxes.forEach(box => {
-      const campX = macroX + (colW - box.w) / 2;
-      const campY = macroY;
-
-      const finalIslands = box.localIslands.map(isl => {
-        isl.nodes.forEach(n => {
-          n.x = campX + n._relX;
-          n.y = campY + n._relY;
-        });
-        return {
-          title: isl.title,
-          x: campX + isl.relX,
-          y: campY + isl.relY,
-          w: isl.w,
-          h: isl.h
-        };
+  // 3. Appliquer les coordonnées finales (x, y) aux sous-ovales et à chaque personnage
+  Object.values(campOvals).forEach(camp => {
+    const finalIslands = camp.subOvals.map(so => {
+      const islCx = camp.cx + so.relCx;
+      const islCy = camp.cy + so.relCy;
+      so.nodes.forEach(n => {
+        n.x = islCx + n._subX;
+        n.y = islCy + n._subY;
       });
-
-      renderedTerritories.push({
-        factionId: box.factionId,
-        label: box.label,
-        color: box.color,
-        x: campX,
-        y: campY,
-        w: box.w,
-        h: box.h,
-        islands: finalIslands
-      });
-
-      macroY += box.h + MACRO_GAP_Y;
+      return {
+        title: so.title,
+        cx: islCx,
+        cy: islCy,
+        rx: so.rx,
+        ry: so.ry,
+        leaderId: so.leaderNode.id
+      };
     });
 
-    macroX += colW + MACRO_GAP_X;
+    renderedTerritories.push({
+      factionId: camp.factionId,
+      label: camp.label,
+      color: camp.color,
+      cx: camp.cx,
+      cy: camp.cy,
+      rx: camp.rx,
+      ry: camp.ry,
+      islands: finalIslands
+    });
   });
 }
 
-// Dessin d'un rectangle aux coins arrondis sur le Canvas 2D
-function drawRoundedRect(ctx, x, y, w, h, r) {
+function drawRoundedPill(ctx, x, y, w, h, r) {
   const rad = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
   ctx.moveTo(x + rad, y);
@@ -1431,6 +1662,20 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
   ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
   ctx.lineTo(x, y + rad);
   ctx.quadraticCurveTo(x, y, x + rad, y);
+  ctx.closePath();
+}
+
+// Dessine une étoile à `points` branches centrée en (cx, cy) pour l'encart étoilé des Dieux
+function traceStarPath(ctx, cx, cy, points, outerR, innerR) {
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const r = (i % 2 === 0) ? outerR : innerR;
+    const angle = -Math.PI / 2 + (i * Math.PI) / points;
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
   ctx.closePath();
 }
 
@@ -1659,57 +1904,151 @@ const network = new vis.Network(
   }
 );
 
-// Dessin sur le Canvas des Territoires (Camps / Empires) et des Sous-Îlots (Armées / Escouades / Équipages)
+// 1. AVANT LE DESSIN DES NŒUDS : Grands Ovales des Camps, Bulles Ovales des Bataillons/Escouades, et Étoiles de fond des Dieux
 network.on("beforeDrawing", ctx => {
-  if (layoutMode !== "camps" || !renderedTerritories.length) return;
   ctx.save();
 
-  renderedTerritories.forEach(t => {
-    // 1. Grande zone du Camp / Empire
-    drawRoundedRect(ctx, t.x, t.y, t.w, t.h, 30);
-    ctx.fillStyle = hexToRgba(t.color, 0.075);
-    ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = hexToRgba(t.color, 0.48);
-    ctx.stroke();
-
-    // Cartouche du titre du Camp en haut de la zone
-    ctx.font = "bold 22px system-ui, -apple-system, sans-serif";
-    const titleTxt = t.label.toUpperCase();
-    const tw = ctx.measureText(titleTxt).width;
-    const pillW = tw + 36;
-    const pillH = 38;
-    const pillX = t.x + (t.w - pillW) / 2;
-    const pillY = t.y + 16;
-
-    drawRoundedRect(ctx, pillX, pillY, pillW, pillH, 19);
-    ctx.fillStyle = t.color;
-    ctx.fill();
-
-    ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(titleTxt, t.x + t.w / 2, pillY + pillH / 2 + 1);
-
-    // 2. Sous-îlots (Armées, Escouades, Équipages, Compagnons) à l'intérieur du Camp
-    t.islands.forEach(isl => {
-      drawRoundedRect(ctx, isl.x, isl.y, isl.w, isl.h, 16);
-      ctx.fillStyle = "rgba(17, 19, 24, 0.45)";
+  if (layoutMode === "camps" && renderedTerritories.length) {
+    renderedTerritories.forEach(t => {
+      // Grand Ovale du Camp / Empire avec dégradé radial doux
+      ctx.beginPath();
+      ctx.ellipse(t.cx, t.cy, t.rx, t.ry, 0, 0, Math.PI * 2);
+      const grad = ctx.createRadialGradient(t.cx, t.cy, Math.min(t.rx, t.ry) * 0.15, t.cx, t.cy, Math.max(t.rx, t.ry));
+      grad.addColorStop(0, hexToRgba(t.color, 0.14));
+      grad.addColorStop(0.75, hexToRgba(t.color, 0.06));
+      grad.addColorStop(1, hexToRgba(t.color, 0.02));
+      ctx.fillStyle = grad;
       ctx.fill();
-      ctx.save();
-      ctx.setLineDash([7, 6]);
-      ctx.lineWidth = 1.6;
-      ctx.strokeStyle = hexToRgba(t.color, 0.42);
-      ctx.stroke();
-      ctx.restore();
 
-      // Étiquette du sous-îlot
-      ctx.font = "600 13.5px system-ui, -apple-system, sans-serif";
-      ctx.fillStyle = "#cbd5e1";
+      ctx.lineWidth = 3.2;
+      ctx.strokeStyle = hexToRgba(t.color, 0.55);
+      ctx.stroke();
+
+      // Sous-ovales organiques pour chaque Armée / Bataillon / Escouade / Équipage
+      t.islands.forEach(isl => {
+        ctx.beginPath();
+        ctx.ellipse(isl.cx, isl.cy, isl.rx, isl.ry, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(14, 17, 23, 0.52)";
+        ctx.fill();
+
+        ctx.save();
+        ctx.setLineDash([8, 6]);
+        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = hexToRgba(t.color, 0.48);
+        ctx.stroke();
+        ctx.restore();
+
+        // Pilule de titre en haut de l'ovale d'escouade/bataillon
+        ctx.font = "600 13px system-ui, -apple-system, sans-serif";
+        const itw = ctx.measureText(isl.title).width;
+        const ipW = itw + 22;
+        const ipH = 24;
+        const ipX = isl.cx - ipW / 2;
+        const ipY = isl.cy - isl.ry - 12;
+        drawRoundedPill(ctx, ipX, ipY, ipW, ipH, 12);
+        ctx.fillStyle = "rgba(22, 27, 36, 0.92)";
+        ctx.fill();
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = hexToRgba(t.color, 0.65);
+        ctx.stroke();
+
+        ctx.fillStyle = "#e2e8f0";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(isl.title, isl.cx, ipY + ipH / 2 + 0.5);
+      });
+
+      // Bannière ovale du Camp au sommet du grand ovale
+      ctx.font = "bold 21px system-ui, -apple-system, sans-serif";
+      const titleTxt = t.label.toUpperCase();
+      const tw = ctx.measureText(titleTxt).width;
+      const pillW = tw + 42;
+      const pillH = 40;
+      const pillX = t.cx - pillW / 2;
+      const pillY = t.cy - t.ry - 20;
+
+      drawRoundedPill(ctx, pillX, pillY, pillW, pillH, 20);
+      ctx.fillStyle = t.color;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.fillText(isl.title, isl.x + isl.w / 2, isl.y + 11);
+      ctx.textBaseline = "middle";
+      ctx.fillText(titleTxt, t.cx, pillY + pillH / 2 + 1);
     });
+  }
+
+  // Encart étoilé (fond) derrière chaque Dieu visible + couronne de Gradé / Chef de Faction
+  const visibleIds = nodesDS.getIds();
+  if (visibleIds.length) {
+    const positions = network.getPositions(visibleIds);
+    visibleIds.forEach(id => {
+      const pos = positions[id];
+      const p = persoById[id];
+      if (!pos || !p) return;
+
+      if (p.faction === "divin") {
+        const ws = getGodWarrenStyle(p);
+        ctx.save();
+        ctx.shadowColor = ws.color;
+        ctx.shadowBlur = 22;
+        traceStarPath(ctx, pos.x, pos.y, 10, 56, 40);
+        ctx.fillStyle = "rgba(17, 20, 28, 0.95)";
+        ctx.fill();
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = ws.color;
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+  }
+
+  ctx.restore();
+});
+
+// 2. APRÈS LE DESSIN DES NŒUDS : Liseré étoilé extérieur autour de l'icône des Dieux & Couronne des Chefs/Gradés
+network.on("afterDrawing", ctx => {
+  const visibleIds = nodesDS.getIds();
+  if (!visibleIds.length) return;
+  const positions = network.getPositions(visibleIds);
+  ctx.save();
+
+  visibleIds.forEach(id => {
+    const pos = positions[id];
+    const p = persoById[id];
+    const nodeObj = nodesDS.get(id);
+    if (!pos || !p || !nodeObj) return;
+
+    if (p.faction === "divin") {
+      // Liseré étoilé aux couleurs de la Garenne / Haute Maison autour du portrait du Dieu
+      const ws = getGodWarrenStyle(p);
+      traceStarPath(ctx, pos.x, pos.y, 10, 55, 41);
+      ctx.lineWidth = 2.8;
+      ctx.strokeStyle = ws.color;
+      ctx.stroke();
+
+      // Anneau intérieur soulignant le portrait
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 37, 0, Math.PI * 2);
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+    } else if (nodeObj.isFactionChief) {
+      // Couronne dorée au sommet du Chef de Faction
+      ctx.font = "18px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText("👑", pos.x, pos.y - (nodeObj.size || 34) - 4);
+    } else if (nodeObj.isUnitLeader) {
+      // Étoile de gradé au sommet du Sergent / Capitaine / Poing commandant l'ovale
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText("🎖️", pos.x, pos.y - (nodeObj.size || 32) - 3);
+    }
   });
 
   ctx.restore();
@@ -1789,12 +2128,23 @@ function resolveAffectationAtTome(p, targetTome) {
   };
 }
 
-function makeInitialsAvatarSvg(nom, bgColor) {
+// Médaillon SVG circulaire élégant avec initiales pour les personnages sans illustration Wiki
+function makeInitialsAvatarSvg(nom, bgColor, ringColor) {
   const parts = String(nom || "?").split(/[\s/]+/).filter(Boolean);
-  const initials = (parts[0]?.[0] || "") + (parts[1]?.[0] || "");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
-    <rect width="120" height="120" rx="60" fill="${bgColor || '#334155'}"/>
-    <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="system-ui,sans-serif" font-size="44" font-weight="700">${initials.toUpperCase()}</text>
+  const initials = ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase();
+  const col = bgColor || "#334155";
+  const ring = ringColor || "#ffffff";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="140" height="140" viewBox="0 0 140 140">
+    <defs>
+      <radialGradient id="g" cx="35%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.24"/>
+        <stop offset="100%" stop-color="#000000" stop-opacity="0.35"/>
+      </radialGradient>
+    </defs>
+    <circle cx="70" cy="70" r="66" fill="${col}"/>
+    <circle cx="70" cy="70" r="66" fill="url(#g)"/>
+    <circle cx="70" cy="70" r="60" fill="none" stroke="${ring}" stroke-width="3" stroke-opacity="0.55"/>
+    <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="system-ui,-apple-system,sans-serif" font-size="48" font-weight="800">${initials}</text>
   </svg>`;
   return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
 }
@@ -1883,32 +2233,42 @@ function rebuildGraph(newData) {
 
   const showPortraits = document.getElementById("toggleNodePortraits").checked;
 
+  // Tous les personnages affichent leur icône d'aperçu ronde (portrait Wiki ou médaillon d'initiales) !
   allNodes = DATA.personnages.map(p => {
     const c = facColor(p.faction);
     const divInfo = getDivineOrRepInfo(p);
-    let label = p.nomVO && p.nomVO.toLowerCase() !== p.nom.toLowerCase()
-      ? `${p.nom}\n(${p.nomVO})`
-      : p.nom;
+    const isGod = !!(divInfo && divInfo.isGod);
+    const isRep = !!(divInfo && divInfo.isRep);
+    const rankSc = getRankScore(p);
+
+    let label = p.nom;
+    if (p.grade && p.faction !== "divin") {
+      label += `\n🎖️ ${p.grade.split("(")[0].trim()}`;
+    } else if (p.nomVO && p.nomVO.toLowerCase() !== p.nom.toLowerCase()) {
+      label += `\n(${p.nomVO})`;
+    }
     if (divInfo) {
       label += `\n${divInfo.badge}`;
     }
-    const hasImg = showPortraits && p.portrait;
-    const isHighlighted = !!divInfo;
-    const borderCol = isHighlighted ? divInfo.color : (hasImg ? c : "#ffffff");
+
+    const borderCol = divInfo ? divInfo.color : (rankSc >= 50 ? "#f8fafc" : c);
+    const fallbackSvg = makeInitialsAvatarSvg(p.nom, c, borderCol);
+    const imgUrl = p.portrait || fallbackSvg;
+    const nodeSize = isGod ? 37 : (rankSc >= 80 ? 35 : (rankSc >= 50 ? 32 : 28));
 
     return {
       id: p.id,
       label: label,
       group: p.faction,
-      shape: hasImg ? "circularImage" : "box",
-      image: hasImg ? p.portrait : undefined,
-      brokenImage: hasImg ? makeInitialsAvatarSvg(p.nom, c) : undefined,
-      size: hasImg ? (isHighlighted ? 31 : 25) : undefined,
-      borderWidth: isHighlighted ? 4 : (hasImg ? 3 : 2),
+      shape: showPortraits ? "circularImage" : "box",
+      image: showPortraits ? imgUrl : undefined,
+      brokenImage: showPortraits ? fallbackSvg : undefined,
+      size: showPortraits ? nodeSize : undefined,
+      borderWidth: isGod ? 5 : (isRep ? 4 : (rankSc >= 50 ? 3.5 : 2.5)),
       margin: 8,
-      shadow: isHighlighted
-        ? { enabled: true, color: "rgba(245, 158, 11, 0.75)", size: 18, x: 0, y: 0 }
-        : { enabled: false },
+      shadow: (isGod || isRep)
+        ? { enabled: true, color: hexToRgba(divInfo.color, 0.85), size: 22, x: 0, y: 0 }
+        : { enabled: true, color: "rgba(0,0,0,0.55)", size: 10, x: 0, y: 3 },
       color: {
         background: c,
         border: borderCol,
@@ -1916,77 +2276,32 @@ function rebuildGraph(newData) {
         hover: { background: c, border: "#fde047" }
       },
       font: {
-        color: isHighlighted ? "#fef08a" : "#ffffff",
-        size: isHighlighted ? 12.5 : 12,
-        strokeWidth: hasImg ? 3 : 0,
-        strokeColor: "#111318"
+        color: (isGod || isRep) ? "#fef08a" : "#ffffff",
+        size: isGod ? 13 : (rankSc >= 50 ? 12.5 : 11.5),
+        strokeWidth: 3.5,
+        strokeColor: "#0e1015"
       },
       info: p,
       divInfo: divInfo
     };
   });
 
-  const pairCounts = {};
-  const pairSeen = {};
-  DATA.relations.forEach(r => {
-    const k = [r.a, r.b].sort().join("::");
-    pairCounts[k] = (pairCounts[k] || 0) + 1;
-  });
-
-  const dimCross = document.getElementById("toggleDimCrossEdges")?.checked;
-
-  allEdges = DATA.relations.map((r, idx) => {
-    const s = RELATION_STYLES[r.type] || { color: "#94a3b8", directed: false };
-    const k = [r.a, r.b].sort().join("::");
-    const totalForPair = pairCounts[k] || 1;
-    const curIdx = pairSeen[k] || 0;
-    pairSeen[k] = curIdx + 1;
-
-    let smoothCfg = { type: "continuous" };
-    if (totalForPair > 1) {
-      const dir = curIdx % 2 === 0 ? "curvedCW" : "curvedCCW";
-      const roundness = 0.16 + Math.floor(curIdx / 2) * 0.14;
-      smoothCfg = { enabled: true, type: dir, roundness };
-    }
-
-    const pA = persoById[r.a];
-    const pB = persoById[r.b];
-    const isCrossCamp = pA && pB && pA.faction !== pB.faction;
-    const isDivineLink = (pA && pA.faction === "divin") || (pB && pB.faction === "divin");
-
-    let edgeColor = s.color;
-    let edgeWidth = isDivineLink ? 2.6 : 2;
-    if (dimCross && isCrossCamp && !isDivineLink) {
-      edgeColor = hexToRgba(s.color, 0.22);
-      edgeWidth = 1.2;
-    }
-
-    return {
-      id: "e" + idx,
-      from: r.a,
-      to: r.b,
-      label: (dimCross && isCrossCamp && !isDivineLink) ? "" : r.type,
-      title: `${r.type} : ${r.label}`,
-      width: edgeWidth,
-      dashes: isDivineLink ? [6, 4] : !!s.dashes,
-      color: { color: edgeColor, highlight: "#facc15", hover: "#fde047" },
-      font: { color: edgeColor, size: 10, strokeWidth: 2, strokeColor: "#111318", align: "middle" },
-      arrows: s.directed ? { to: { enabled: true, scaleFactor: 0.65 } } : undefined,
-      smooth: smoothCfg,
-      rel: r
-    };
-  });
-
   document.getElementById("legend").innerHTML =
-    `<h4>Mise en avant spéciale</h4>
+    `<h4>Encarts & Hiérarchie</h4>
      <div class="item" onclick="document.getElementById('btnToggleDivine').click()">
-       <span class="dot" style="background:#f59e0b;box-shadow:0 0 8px #f59e0b"></span>⚡ Dieux & leurs Représentants (Glaive Mortel, Destriant, Bouclier-Enclume, Chevaliers…)
+       <span class="dot" style="background:#f59e0b;border-radius:50%;box-shadow:0 0 8px #f59e0b"></span>⭐ Dieux (Encart étoilé + liseré de Garenne/Maison)
+     </div>
+     <div class="item" onclick="document.getElementById('btnToggleDivine').click()">
+       <span class="dot" style="background:#a855f7;border-radius:50%;border:2px solid #f59e0b"></span>⚔️ Représentants (Glaive Mortel, Destriant, Bouclier-Enclume…)
+     </div>
+     <div class="item" style="cursor:default">
+       <span>👑 Chef de Faction → 🎖️ Gradés d'Armée / Escouade → Soldats</span>
      </div>
      <h4>Factions / Camps (cliquer pour filtrer)</h4>` +
     usedFactions.map(fid => {
       const f = DATA.factions[fid];
       return `<div class="item" onclick="const s=document.getElementById('filterFaction');s.value=s.value==='${fid}'?'':'${fid}';s.dispatchEvent(new Event('change'))">
-        <span class="dot" style="background:${f.color}"></span>${esc(f.label)}
+        <span class="dot" style="background:${f.color};border-radius:50%"></span>${esc(f.label)}
       </div>`;
     }).join("") +
     `<h4>Types de Relations</h4>` +
@@ -1997,6 +2312,87 @@ function rebuildGraph(newData) {
       </div>`).join("");
 
   applyFilters(true);
+}
+
+// Construit la liste complète des arêtes (relations de la base + liens hiérarchiques des gradés vers le chef de faction)
+function buildEdgesForNodes(matchedIds) {
+  const dimCross = document.getElementById("toggleDimCrossEdges")?.checked;
+
+  // Fusionner DATA.relations et generatedHierarchyEdges sans doublon sur (a, b, type)
+  const combinedRels = [];
+  const seenTriplets = new Set();
+
+  DATA.relations.forEach(r => {
+    if (!matchedIds.has(r.a) || !matchedIds.has(r.b)) return;
+    const t = (r.type === "Commandement" || r.type === "Hiérarchie") ? "Hiérarchie / Commandement" : r.type;
+    const key1 = `${r.a}::${r.b}::${t}`;
+    const key2 = `${r.b}::${r.a}::${t}`;
+    seenTriplets.add(key1);
+    seenTriplets.add(key2);
+    combinedRels.push({ ...r, type: t });
+  });
+
+  if (layoutMode === "camps") {
+    generatedHierarchyEdges.forEach(gr => {
+      if (!matchedIds.has(gr.a) || !matchedIds.has(gr.b)) return;
+      const key1 = `${gr.a}::${gr.b}::${gr.type}`;
+      const key2 = `${gr.b}::${gr.a}::${gr.type}`;
+      if (!seenTriplets.has(key1) && !seenTriplets.has(key2)) {
+        seenTriplets.add(key1);
+        seenTriplets.add(key2);
+        combinedRels.push(gr);
+      }
+    });
+  }
+
+  const pairCounts = {};
+  const pairSeen = {};
+  combinedRels.forEach(r => {
+    const k = [r.a, r.b].sort().join("::");
+    pairCounts[k] = (pairCounts[k] || 0) + 1;
+  });
+
+  return combinedRels.map((r, idx) => {
+    const s = RELATION_STYLES[r.type] || { color: "#94a3b8", directed: false };
+    const k = [r.a, r.b].sort().join("::");
+    const totalForPair = pairCounts[k] || 1;
+    const curIdx = pairSeen[k] || 0;
+    pairSeen[k] = curIdx + 1;
+
+    let smoothCfg = { type: "continuous" };
+    if (totalForPair > 1) {
+      const dir = curIdx % 2 === 0 ? "curvedCW" : "curvedCCW";
+      const roundness = 0.17 + Math.floor(curIdx / 2) * 0.14;
+      smoothCfg = { enabled: true, type: dir, roundness };
+    }
+
+    const pA = persoById[r.a];
+    const pB = persoById[r.b];
+    const isCrossCamp = pA && pB && pA.faction !== pB.faction;
+    const isDivineLink = (pA && pA.faction === "divin") || (pB && pB.faction === "divin");
+
+    let edgeColor = s.color;
+    let edgeWidth = isDivineLink ? 2.6 : (r.isAutoHierarchy ? 1.8 : 2.1);
+    if (dimCross && isCrossCamp && !isDivineLink) {
+      edgeColor = hexToRgba(s.color, 0.2);
+      edgeWidth = 1.1;
+    }
+
+    return {
+      id: "e" + idx,
+      from: r.a,
+      to: r.b,
+      label: ((dimCross && isCrossCamp && !isDivineLink) || r.isAutoHierarchy) ? "" : r.type,
+      title: `${r.type} : ${r.label}`,
+      width: edgeWidth,
+      dashes: isDivineLink ? [6, 4] : (r.isAutoHierarchy ? [4, 4] : !!s.dashes),
+      color: { color: edgeColor, highlight: "#facc15", hover: "#fde047" },
+      font: { color: edgeColor, size: 10, strokeWidth: 2, strokeColor: "#0e1015", align: "middle" },
+      arrows: s.directed ? { to: { enabled: true, scaleFactor: 0.65 } } : undefined,
+      smooth: smoothCfg,
+      rel: r
+    };
+  });
 }
 
 // Boutons de la barre supérieure compacte
@@ -2016,7 +2412,7 @@ document.getElementById("btnToggleLayout").addEventListener("click", () => {
   layoutMode = layoutMode === "camps" ? "free" : "camps";
   const btn = document.getElementById("btnToggleLayout");
   if (layoutMode === "camps") {
-    btn.textContent = "🗺️ Vue : Camps & Unités";
+    btn.textContent = "🗺️ Vue : Ovales & Escouades";
     network.setOptions({ physics: { enabled: false } });
   } else {
     btn.textContent = "🌌 Vue : Graphe Libre";
@@ -2032,7 +2428,7 @@ document.getElementById("btnToggleDivine").addEventListener("click", () => {
 });
 
 document.getElementById("toggleNodePortraits").addEventListener("change", () => rebuildGraph(DATA));
-document.getElementById("toggleDimCrossEdges").addEventListener("change", () => rebuildGraph(DATA));
+document.getElementById("toggleDimCrossEdges").addEventListener("change", () => applyFilters(false));
 
 document.getElementById("btnToggleLegend").addEventListener("click", () => {
   document.getElementById("legend").classList.toggle("open");
@@ -2041,9 +2437,10 @@ document.getElementById("btnToggleLegend").addEventListener("click", () => {
 function getNeighborhoodIds(centerId, maxDegree) {
   const visited = new Set([centerId]);
   let frontier = new Set([centerId]);
+  const allRels = [...DATA.relations, ...generatedHierarchyEdges];
   for (let d = 1; d <= maxDegree; d++) {
     const next = new Set();
-    DATA.relations.forEach(r => {
+    allRels.forEach(r => {
       if (frontier.has(r.a) && !visited.has(r.b)) { visited.add(r.b); next.add(r.b); }
       if (frontier.has(r.b) && !visited.has(r.a)) { visited.add(r.a); next.add(r.a); }
     });
@@ -2116,7 +2513,7 @@ function updateActiveFilterChips() {
     }
   });
   if (highlightDivineOnly) {
-    active.push({ id: "__DIVINE__", label: "⚡ Dieux & leurs Représentants" });
+    active.push({ id: "__DIVINE__", label: "⭐ Dieux & leurs Représentants" });
   }
 
   const badge = document.getElementById("filterCountBadge");
@@ -2170,6 +2567,8 @@ function applyFilters(shouldFit = false) {
 
   const matchedIds = new Set();
   allNodes.forEach(n => {
+    n.isUnitLeader = false;
+    n.isFactionChief = false;
     const p = n.info;
     if (focusAllowed && !focusAllowed.has(p.id)) return;
     if (highlightDivineOnly && !n.divInfo) return;
@@ -2209,15 +2608,17 @@ function applyFilters(shouldFit = false) {
   });
 
   const filteredNodes = allNodes.filter(n => matchedIds.has(n.id));
-  const filteredEdges = allEdges.filter(e => matchedIds.has(e.from) && matchedIds.has(e.to));
 
   if (layoutMode === "camps") {
     network.setOptions({ physics: { enabled: false } });
     computeCampAndIslandLayout(filteredNodes);
   } else {
     renderedTerritories = [];
+    generatedHierarchyEdges = [];
     network.setOptions({ physics: { enabled: true } });
   }
+
+  const filteredEdges = buildEdgesForNodes(matchedIds);
 
   nodesDS.clear();
   edgesDS.clear();
@@ -2324,8 +2725,13 @@ function renderPanel(p) {
   const maxSpoiler = document.getElementById("filterSpoiler").value;
   const activeTome = maxSpoiler || document.getElementById("filterTome").value || "";
 
-  const rels = DATA.relations.filter(r => {
+  const allRels = [...DATA.relations, ...generatedHierarchyEdges];
+  const seenPanelRels = new Set();
+  const rels = allRels.filter(r => {
     if (r.a !== p.id && r.b !== p.id) return false;
+    const k = `${r.a}::${r.b}::${r.type}`;
+    if (seenPanelRels.has(k)) return false;
+    seenPanelRels.add(k);
     if (maxSpoiler) {
       const otherId = r.a === p.id ? r.b : r.a;
       const other = persoById[otherId];
@@ -2351,10 +2757,10 @@ function renderPanel(p) {
 
   const affInfo = resolveAffectationAtTome(p, activeTome);
   const divInfo = getDivineOrRepInfo(p);
-  const subIsland = getSubIslandName(p);
+  const subUnit = getSubUnitSpec(p);
 
-  const avatarSrc = p.portrait || makeInitialsAvatarSvg(p.nom, fac.color);
-  const fallbackAvatar = makeInitialsAvatarSvg(p.nom, fac.color);
+  const fallbackAvatar = makeInitialsAvatarSvg(p.nom, fac.color, divInfo ? divInfo.color : "#ffffff");
+  const avatarSrc = p.portrait || fallbackAvatar;
   const safeStatut = getSpoilerSafeStatut(p);
   const isF1 = focusCenterId === p.id && focusDegree === 1;
   const isF2 = focusCenterId === p.id && focusDegree === 2;
@@ -2362,13 +2768,13 @@ function renderPanel(p) {
   let html = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div class="panel-header">
-        <img class="portrait-avatar" src="${esc(avatarSrc)}" alt="${esc(p.nom)}" style="${divInfo ? 'border-color:#f59e0b;box-shadow:0 0 14px rgba(245,158,11,0.5)' : ''}" onerror="this.onerror=null;this.src='${fallbackAvatar}'" />
+        <img class="portrait-avatar" src="${esc(avatarSrc)}" alt="${esc(p.nom)}" style="${divInfo ? `border-color:${divInfo.color};box-shadow:0 0 16px ${divInfo.color}` : ''}" onerror="this.onerror=null;this.src='${fallbackAvatar}'" />
         <div>
           <h2>${esc(p.nom)}</h2>
           ${p.nomVO ? `<div class="subtitle">VO : ${esc(p.nomVO)}</div>` : ""}
           <div class="badges" style="margin-top:6px">
             <span class="tag" style="background:${fac.color}">${esc(fac.label)}</span>
-            ${divInfo ? `<span class="tag tag-gold">${esc(divInfo.badge)}</span>` : ""}
+            ${divInfo ? `<span class="tag tag-gold" style="border-color:${divInfo.color};color:${divInfo.color}">${esc(divInfo.badge)}</span>` : ""}
             ${p.grade ? `<span class="tag" style="background:#1e3a8a">🎖️ ${esc(p.grade)}</span>` : ""}
             ${safeStatut ? `<span class="tag tag-outline">${esc(safeStatut)}</span>` : ""}
           </div>
@@ -2391,10 +2797,10 @@ function renderPanel(p) {
       <div class="aff-title">
         ${affInfo.isTimeFiltered
           ? `📍 Affectation à l'instant T (Tome ${esc(affInfo.tomeNum)} — ${esc(TOME_BY_NUM[String(affInfo.tomeNum)]?.short || '')})`
-          : `📍 Affectation actuelle / principale & Îlot`}
+          : `📍 Affectation actuelle / principale & Ovale d'unité`}
       </div>
       <div class="aff-current">${esc(affInfo.currentText)}</div>
-      <div style="font-size:11.5px;color:#93c5fd">🗺️ Îlot sur la carte : <b>${esc(subIsland)}</b></div>
+      <div style="font-size:11.5px;color:#93c5fd">⭕ Ovale sur la carte : <b>${esc(subUnit.name)}</b></div>
       ${affInfo.previousList.length ? `
         <div class="aff-prev">
           <b style="color:#cbd5e1">📜 Précédentes affectations & parcours :</b><br/>
@@ -2423,7 +2829,7 @@ function renderPanel(p) {
     html += `<div class="resume-box">${esc(p.resume)}</div>`;
   }
 
-  html += `<h3 style="margin:8px 0 2px;font-size:13.5px;color:var(--muted)">Relations (${rels.length})</h3>`;
+  html += `<h3 style="margin:8px 0 2px;font-size:13.5px;color:var(--muted)">Relations & Chaîne hiérarchique (${rels.length})</h3>`;
   if (!rels.length) {
     html += `<p class="hint">Aucune relation enregistrée pour ce personnage.</p>`;
   } else {
