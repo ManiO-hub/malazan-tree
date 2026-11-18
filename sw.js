@@ -1,4 +1,4 @@
-const CACHE_NAME = "malazan-tree-v14";
+const CACHE_NAME = "malazan-tree-v15";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

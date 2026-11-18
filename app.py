@@ -958,6 +958,16 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
     return drive_status
 
 
+def safe_js_json(obj):
+    """Sérialise en JSON sûr pour injection dans une balise <script> HTML."""
+    return (
+        json.dumps(obj, ensure_ascii=False)
+        .replace("</", "<\\/")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+
+
 def sync_html_and_git_push(sync_drive=True):
     """
     Met à jour window.INITIAL_DATA dans index.html (et Index.html) avec la base actuelle,
@@ -965,21 +975,21 @@ def sync_html_and_git_push(sync_drive=True):
     """
     try:
         db = load_database()
-        db_json = json.dumps(db, ensure_ascii=False)
-        trans_json = json.dumps({"vf_to_vo": VF_TO_VO, "vo_to_vf": VO_TO_VF}, ensure_ascii=False)
+        db_json = safe_js_json(db)
+        trans_json = safe_js_json({"vf_to_vo": VF_TO_VO, "vo_to_vf": VO_TO_VF})
         for fname in ("index.html", "Index.html"):
             fpath = os.path.join(BASE_DIR, fname)
             if os.path.exists(fpath):
                 with open(fpath, "r", encoding="utf-8") as f:
                     html = f.read()
                 html = re.sub(
-                    r"window\.TRANSLATIONS_DATA = \{.*?\};",
-                    "window.TRANSLATIONS_DATA = " + trans_json + ";",
+                    r"window\.TRANSLATIONS_DATA\s*=\s*\{.*?\};",
+                    lambda _: "window.TRANSLATIONS_DATA = " + trans_json + ";",
                     html, count=1, flags=re.DOTALL
                 )
                 html = re.sub(
-                    r"window\.INITIAL_DATA = \{.*?\};\nconst IS_GAS",
-                    "window.INITIAL_DATA = " + db_json + ";\nconst IS_GAS",
+                    r"window\.INITIAL_DATA\s*=\s*\{.*?\};\s*\r?\nconst IS_GAS",
+                    lambda _: "window.INITIAL_DATA = " + db_json + ";\nconst IS_GAS",
                     html, count=1, flags=re.DOTALL
                 )
                 with open(fpath, "w", encoding="utf-8") as f:
@@ -989,8 +999,8 @@ def sync_html_and_git_push(sync_drive=True):
                 ["bash", "-c", "git add malazan.xlsx index.html Index.html translations.json tomes.py app.py sw.js version.json portraits && git commit -m 'Auto-sync Malazan database' && git push"],
                 cwd=BASE_DIR, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
-    except Exception:
-        pass
+    except Exception as e:
+        print("[sync] Erreur sync_html_and_git_push:", e)
 
 
 class MalazanHandler(BaseHTTPRequestHandler):
