@@ -761,6 +761,21 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
     ws_p = wb["Personnages"]
 
     cid = char_data["id"].strip()
+    p_url = (char_data.get("portrait") or "").strip()
+    if p_url.startswith("http"):
+        try:
+            os.makedirs(os.path.join(BASE_DIR, "portraits"), exist_ok=True)
+            local_rel = f"portraits/{cid}.webp"
+            local_abs = os.path.join(BASE_DIR, local_rel)
+            req = urllib.request.Request(p_url, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://malazan.fandom.com/"})
+            with urllib.request.urlopen(req, timeout=8) as r_img:
+                img_bytes = r_img.read()
+                if len(img_bytes) > 200:
+                    with open(local_abs, "wb") as f_img:
+                        f_img.write(img_bytes)
+                    char_data["portrait"] = local_rel
+        except Exception:
+            pass
     target_row = None
     last_filled_row = 1
     for r in range(2, ws_p.max_row + 1):
@@ -940,6 +955,20 @@ class MalazanHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
             self.wfile.write(content)
+        elif parsed.path.startswith("/portraits/"):
+            fname = os.path.basename(parsed.path)
+            fpath = os.path.join(BASE_DIR, "portraits", fname)
+            if os.path.exists(fpath) and os.path.isfile(fpath):
+                with open(fpath, "rb") as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/webp")
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+            else:
+                self.send_error(404)
         elif parsed.path == "/api/data":
             self._send_json(load_database())
         elif parsed.path == "/api/lookup":
