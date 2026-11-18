@@ -1036,6 +1036,14 @@ class MalazanHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
             self.wfile.write(content)
+        elif parsed.path in ("/icon-192.png", "/icon-512.png"):
+            with open(os.path.join(BASE_DIR, parsed.path.lstrip("/")), "rb") as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
         elif parsed.path == "/sw.js":
             with open(os.path.join(BASE_DIR, "sw.js"), "rb") as f:
                 content = f.read()
