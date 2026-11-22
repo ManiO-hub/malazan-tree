@@ -260,6 +260,73 @@ def _search_mediawiki(base_api, term):
         return [x["title"] for x in data.get("query", {}).get("search", [])]
 
 
+def strip_accents(s):
+    return "".join(c for c in unicodedata.normalize("NFKD", str(s or "")) if not unicodedata.combining(c))
+
+
+def lookup_dict_insensitive(d, key):
+    if not d or not key:
+        return ""
+    low = str(key).strip().lower()
+    if low in d:
+        return d[low]
+    no_acc = strip_accents(low)
+    for k, v in d.items():
+        if strip_accents(k) == no_acc:
+            return v
+    return ""
+
+
+def extract_balanced_infobox(wt):
+    m = re.search(r"\{\{\s*Infobox\b", wt or "", re.IGNORECASE)
+    if not m:
+        return {}, {}, 0
+    i = m.start()
+    depth = 0
+    end = len(wt)
+    while i < len(wt) - 1:
+        if wt[i:i+2] == "{{":
+            depth += 1
+            i += 2
+            continue
+        if wt[i:i+2] == "}}":
+            depth -= 1
+            i += 2
+            if depth <= 0:
+                end = i
+                break
+            continue
+        i += 1
+    block = wt[m.start():end]
+    clean_map, raw_map = {}, {}
+    for line in block.split("\n"):
+        s = line.strip()
+        if s.startswith("|") and "=" in s:
+            k, raw_v = s[1:].split("=", 1)
+            kl = k.strip().lower()
+            raw_v = raw_v.strip()
+            cl_v = clean_wiki_markup(raw_v)
+            if raw_v:
+                raw_map[kl] = raw_v
+            if cl_v:
+                clean_map[kl] = cl_v
+    return clean_map, raw_map, end
+
+
+def extract_wiki_links(raw_text):
+    out = []
+    for m in re.finditer(r"\[\[([^\]]+)\]\]", raw_text or ""):
+        inside = m.group(1)
+        if ":" in inside:
+            continue
+        parts = inside.split("|")
+        page = parts[0].split("#")[0].strip()
+        disp = parts[1].strip() if len(parts) > 1 else page
+        if len(page) >= 3:
+            out.append((page, disp))
+    return out
+
+
 def lookup_character_online(query_name, existing_characters):
     """
     Interroge simultanément :
@@ -271,172 +338,241 @@ def lookup_character_online(query_name, existing_characters):
     raw_name = query_name.strip()
     lower_name = raw_name.lower()
 
-    known_vo = VF_TO_VO.get(lower_name, "")
-    known_vf = VO_TO_VF.get(lower_name, "")
+    known_vo = lookup_dict_insensitive(VF_TO_VO, raw_name)
+    known_vf = lookup_dict_insensitive(VO_TO_VF, raw_name)
 
     fr_api = "https://encyclopedie-malazeenne.fandom.com/fr/api.php"
     en_api = "https://malazan.fandom.com/api.php"
 
     # 1. Recherche sur le Wiki Francophone (Encyclopédie Malazéenne)
-    fr_title = ""
-    fr_wikitext = ""
-    fr_thumb = ""
-    fr_infobox = {}
+    fr_title, fr_wikitext, fr_thumb = "", "", ""
+    fr_infobox, fr_raw_box, fr_box_end = {}, {}, 0
     fr_resume = ""
 
     fr_query = known_vf or raw_name
     try:
-        fr_titles = _search_mediawiki(fr_api, fr_query)
-        chosen_fr = ""
-        for t in fr_titles:
-            if "/" not in t and "Dramatis" not in t and "Glossaire" not in t and "Chapitre" not in t:
-                tl = t.lower()
-                if tl in (fr_query.lower(), lower_name, (known_vo or "").lower()) or fr_query.lower() in tl or lower_name in tl:
-                    chosen_fr = t
-                    break
-        if chosen_fr:
-            fr_title, fr_wikitext, fr_thumb = _fetch_mediawiki_page(fr_api, chosen_fr)
-            m_box_fr = re.search(r"\{\{Infobox[^{}]*?(.*?)\n\}\}", fr_wikitext, re.DOTALL | re.IGNORECASE)
-            if m_box_fr:
-                for line in m_box_fr.group(1).split("\n"):
-                    if line.strip().startswith("|") and "=" in line:
-                        k, v = line.strip()[1:].split("=", 1)
-                        val_c = clean_wiki_markup(v.strip())
-                        if val_c:
-                            fr_infobox[k.strip().lower()] = val_c
-            body_fr = fr_wikitext[m_box_fr.end():] if m_box_fr else fr_wikitext
-            body_fr = body_fr.split("\n==")[0]
-            paras_fr = []
-            for line in body_fr.split("\n"):
-                lc = clean_wiki_markup(line.strip())
-                if len(lc) > 35 and not lc.startswith("{") and not lc.startswith("|") and not lc.startswith("[[Catégorie"):
-                    paras_fr.append(lc)
-            fr_resume = " ".join(paras_fr[:2])[:650]
-            if fr_infobox.get("anglais") and not known_vo:
-                known_vo = fr_infobox["anglais"].split("/")[0].strip()
+        for cand_fr in list(dict.fromkeys(x for x in (known_vf, raw_name) if x)):
+            t, wt, th = _fetch_mediawiki_page(fr_api, cand_fr)
+            if wt:
+                fr_title, fr_wikitext, fr_thumb = t, wt, th
+                break
+        if not fr_wikitext:
+            fr_titles = _search_mediawiki(fr_api, fr_query)
+            fq_norm = strip_accents(fr_query).lower()
+            raw_norm = strip_accents(raw_name).lower()
+            chosen_fr = ""
+            for t in fr_titles:
+                if "/" not in t and "Dramatis" not in t and "Glossaire" not in t and "Chapitre" not in t:
+                    tl = strip_accents(t).lower()
+                    if tl in (fq_norm, raw_norm) or fq_norm in tl or raw_norm in tl:
+                        chosen_fr = t
+                        break
+            if chosen_fr:
+                fr_title, fr_wikitext, fr_thumb = _fetch_mediawiki_page(fr_api, chosen_fr)
     except Exception:
         pass
 
     # 2. Recherche sur le Malazan Wiki Anglophone
+    if fr_wikitext:
+        fr_infobox, fr_raw_box, fr_box_end = extract_balanced_infobox(fr_wikitext)
+        if fr_infobox.get("anglais") and not known_vo:
+            known_vo = fr_infobox["anglais"].split("/")[0].strip()
+
     search_vo = known_vo or raw_name
-    en_title = ""
-    en_wikitext = ""
-    en_thumb = ""
-    en_infobox = {}
-    en_intro = ""
+    en_title, en_wikitext, en_thumb = "", "", ""
+    en_infobox, en_raw_box, en_box_end = {}, {}, 0
 
     try:
-        en_titles = _search_mediawiki(en_api, search_vo)
-        if not en_titles and search_vo == raw_name:
-            try:
-                q = urllib.parse.quote(raw_name)
-                turl = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=fr&tl=en&dt=t&q={q}"
-                req = urllib.request.Request(turl, headers={"User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(req, timeout=5) as r:
-                    en_guess = json.loads(r.read().decode("utf-8"))[0][0][0]
-                    if en_guess and en_guess.lower() != lower_name:
-                        en_titles = _search_mediawiki(en_api, en_guess)
-            except Exception:
-                pass
-
-        chosen_en = ""
-        for t in en_titles:
-            if "/" not in t and "Dramatis" not in t and "Book" not in t:
-                chosen_en = t
-                break
-        if not chosen_en and en_titles:
-            chosen_en = en_titles[0]
-
-        if chosen_en:
-            en_title, en_wikitext, en_thumb = _fetch_mediawiki_page(en_api, chosen_en)
-            m_box_en = re.search(r"\{\{Infobox character(.*?)\n\}\}", en_wikitext, re.DOTALL | re.IGNORECASE)
-            if m_box_en:
-                for line in m_box_en.group(1).split("\n"):
-                    if line.strip().startswith("|") and "=" in line:
-                        k, v = line.strip()[1:].split("=", 1)
-                        val_c = clean_wiki_markup(v.strip())
-                        if val_c:
-                            en_infobox[k.strip().lower()] = val_c
-            body_en = en_wikitext[m_box_en.end():] if m_box_en else en_wikitext
-            body_en = body_en.split("\n==")[0]
-            paras_en = []
-            for line in body_en.split("\n"):
-                lc = clean_wiki_markup(line.strip())
-                if len(lc) > 40 and not lc.startswith("{") and not lc.startswith("|"):
-                    paras_en.append(lc)
-            en_intro = " ".join(paras_en[:2])[:650]
+        t, wt, th = _fetch_mediawiki_page(en_api, search_vo)
+        if wt:
+            en_title, en_wikitext, en_thumb = t, wt, th
+        else:
+            en_titles = _search_mediawiki(en_api, search_vo)
+            if not en_titles and search_vo == raw_name:
+                try:
+                    q = urllib.parse.quote(raw_name)
+                    turl = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=fr&tl=en&dt=t&q={q}"
+                    req = urllib.request.Request(turl, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req, timeout=5) as r:
+                        en_guess = json.loads(r.read().decode("utf-8"))[0][0][0]
+                        if en_guess and en_guess.lower() != lower_name:
+                            en_titles = _search_mediawiki(en_api, en_guess)
+                except Exception:
+                    pass
+            vo_norm = strip_accents(search_vo).lower()
+            chosen_en = ""
+            for cand in en_titles:
+                if strip_accents(cand).lower() == vo_norm:
+                    chosen_en = cand
+                    break
+            if not chosen_en:
+                for cand in en_titles:
+                    if "/" not in cand and "Dramatis" not in cand and "Book" not in cand:
+                        chosen_en = cand
+                        break
+            if not chosen_en and en_titles:
+                chosen_en = en_titles[0]
+            if chosen_en:
+                en_title, en_wikitext, en_thumb = _fetch_mediawiki_page(en_api, chosen_en)
     except Exception:
         pass
+
+    # Seconde chance FR si l'article EN révèle le nom exact traduit dans VO_TO_VF
+    if not fr_wikitext and en_title:
+        try:
+            vf_from_en = lookup_dict_insensitive(VO_TO_VF, en_title)
+            if vf_from_en:
+                t, wt, th = _fetch_mediawiki_page(fr_api, vf_from_en)
+                if wt:
+                    fr_title, fr_wikitext, fr_thumb = t, wt, th
+        except Exception:
+            pass
 
     if not fr_wikitext and not en_wikitext:
         return {"error": f"Aucun article trouvé sur l'Encyclopédie Malazéenne (FR) ni sur le Malazan Wiki (VO) pour « {raw_name} »."}
 
+    fr_infobox, fr_raw_box, fr_box_end = extract_balanced_infobox(fr_wikitext)
+    en_infobox, en_raw_box, en_box_end = extract_balanced_infobox(en_wikitext)
+    if fr_infobox.get("anglais") and not known_vo:
+        known_vo = fr_infobox["anglais"].split("/")[0].strip()
+
+    fr_cats = [m.group(1).strip() for m in re.finditer(r"\[\[\s*Cat[ée]gorie\s*:\s*([^\]|]+)", fr_wikitext or "", re.IGNORECASE)]
+    en_cats = [m.group(1).strip() for m in re.finditer(r"\[\[\s*Category\s*:\s*([^\]|]+)", en_wikitext or "", re.IGNORECASE)]
+    fr_cats_low = [c.lower() for c in fr_cats]
+    en_cats_low = [c.lower() for c in en_cats]
+
+    intro_raw_fr = (fr_wikitext or "")[fr_box_end:].split("\n==")[0]
+    intro_raw_en = (en_wikitext or "")[en_box_end:].split("\n==")[0]
+
+    def _extract_paras(raw_intro):
+        cleaned_raw = re.sub(r"<ref[^>]*>.*?</ref>", "", raw_intro, flags=re.DOTALL | re.IGNORECASE)
+        cleaned_raw = re.sub(r"<ref[^/>]*/\s*>", "", cleaned_raw, flags=re.IGNORECASE)
+        res = []
+        for ln in cleaned_raw.split("\n"):
+            lc = clean_wiki_markup(ln.strip())
+            if len(lc) > 30 and not lc.startswith("{") and not lc.startswith("|") and not re.match(r"^(?:cat[ée]gorie|category):", lc, re.IGNORECASE):
+                res.append(lc)
+        return res
+
+    paras_fr = _extract_paras(intro_raw_fr)
+    paras_en = _extract_paras(intro_raw_en)
+    fr_intro_clean = " ".join(paras_fr)
+    en_intro_clean = " ".join(paras_en)
+    fr_resume = " ".join(paras_fr[:2])[:650]
+    en_intro = " ".join(paras_en[:2])[:650]
+
     # 3. Détermination des noms VF et VO (selon correspondances Leha / Wikis)
     vo_name = en_infobox.get("name") or fr_infobox.get("anglais") or known_vo or en_title or ""
-    vf_name = fr_infobox.get("nom") or VO_TO_VF.get(vo_name.lower(), "") or known_vf or (fr_title if fr_title else raw_name)
+    vf_name = fr_infobox.get("nom") or lookup_dict_insensitive(VO_TO_VF, vo_name) or known_vf or (fr_title if fr_title else raw_name)
     if vf_name and vf_name.islower():
         vf_name = vf_name[0].upper() + vf_name[1:]
 
-    # 4. Peuple (UNIQUEMENT si précisé dans l'infobox FR ou VO — sinon vide "")
-    peuple = ""
-    race_fr = fr_infobox.get("race", "")
-    race_en = en_infobox.get("race", "")
+    # 4. Genre & Peuple (+ tribu entre parenthèses ex: "Humain (Korelri)")
+    sex_inf = (fr_infobox.get("sexe", "") or en_infobox.get("gender", "")).lower()
     is_female = (
-        fr_infobox.get("sexe", "").lower() in ("femme", "femelle", "female", "féminin")
-        or en_infobox.get("gender", "").lower() == "female"
+        sex_inf in ("femme", "femelle", "female", "féminin")
+        or "females" in en_cats_low
+        or ("males" not in en_cats_low and sex_inf not in ("homme", "male") and (
+            bool(re.search(r"\b(?:she|her)\b", en_intro_clean, re.IGNORECASE))
+            or bool(re.search(r"\b(?:elle|épouse)\b", fr_intro_clean, re.IGNORECASE))
+        ))
     )
-    if race_fr:
-        peuple = race_fr
-    elif race_en:
+
+    peuple = ""
+    extra_tribu = ""
+    race_raw = fr_infobox.get("race", "") or en_infobox.get("race", "")
+    if race_raw:
+        m_par = re.match(r"^([^(]+?)\s*\(([^)]+)\)\s*$", race_raw)
+        if m_par:
+            peuple = m_par.group(1).strip()
+            extra_tribu = m_par.group(2).strip()
+        else:
+            peuple = race_raw.strip()
         peuple_map = {
-            "Human": "Humaine" if is_female else "Humain",
-            "Tiste Andii": "Tiste Andii",
-            "Tiste Edur": "Tiste Edur",
-            "Tiste Liosan": "Tiste Liosan",
-            "Jaghut": "Jaghut",
-            "Imass": "Imass",
-            "T'lan Imass": "T'lan Imass",
-            "Barghast": "Barghast",
-            "Trell": "Trell",
-            "Thelomen Toblakai": "Thelomen Toblakaï",
-            "Toblakai": "Thelomen Toblakaï",
-            "Teblor": "Teblor / Thelomen Toblakaï",
-            "Moranth": "Moranth",
-            "Napan": "Napan",
-            "Wickan": "Wickan",
-            "Letherii": "Letherii",
-            "Forkrul Assail": "Forkrul Assail",
-            "K'Chain Che'Malle": "K'Chain Che'Malle",
-            "Eleint": "Éléint",
-            "Azathanai": "Azathanai",
+            "human": "Humaine" if is_female else "Humain",
+            "humain": "Humaine" if is_female else "Humain",
+            "humaine": "Humaine" if is_female else "Humain",
+            "tiste andii": "Tiste Andii",
+            "tiste edur": "Tiste Edur",
+            "tiste liosan": "Tiste Liosan",
+            "jaghut": "Jaghut",
+            "imass": "Imass",
+            "t'lan imass": "T'lan Imass",
+            "barghast": "Barghast",
+            "trell": "Trell",
+            "thelomen toblakai": "Thelomen Toblakaï",
+            "toblakai": "Thelomen Toblakaï",
+            "teblor": "Teblor / Thelomen Toblakaï",
+            "moranth": "Moranth",
+            "napan": "Napan",
+            "wickan": "Wickan",
+            "letherii": "Letherii",
+            "forkrul assail": "Forkrul Assail",
+            "k'chain che'malle": "K'Chain Che'Malle",
+            "eleint": "Éléint",
+            "azathanai": "Azathanai",
         }
-        peuple = peuple_map.get(race_en, translate_en_to_fr(race_en))
+        peuple = peuple_map.get(peuple.lower(), peuple)
+    else:
+        cat_race_map = [
+            ("humans", "Humaine" if is_female else "Humain"),
+            ("tiste andii", "Tiste Andii"),
+            ("tiste edur", "Tiste Edur"),
+            ("tiste liosan", "Tiste Liosan"),
+            ("t'lan imass", "T'lan Imass"),
+            ("jaghut", "Jaghut"),
+            ("barghast", "Barghast"),
+            ("trell", "Trell"),
+            ("moranth", "Moranth"),
+            ("wickans", "Humain"),
+            ("napan", "Napan"),
+            ("letherii", "Letherii"),
+            ("forkrul assail", "Forkrul Assail"),
+            ("k'chain che'malle", "K'Chain Che'Malle"),
+            ("eleint", "Éléint"),
+            ("azathanai", "Azathanai"),
+        ]
+        for ck, pv in cat_race_map:
+            if ck in en_cats_low:
+                peuple = pv
+                break
+        if not peuple and re.search(r"\bhuman\b|\bhumain(?:e)?\b", f"{fr_intro_clean} {en_intro_clean}", re.IGNORECASE):
+            peuple = "Humaine" if is_female else "Humain"
 
     # 5. Statut (UNIQUEMENT si précisé dans les sources — sinon vide "")
     statut = ""
     died_en = en_infobox.get("died", "") or fr_infobox.get("décès", "") or fr_infobox.get("statut", "")
-    if died_en:
-        if "vivant" in died_en.lower():
-            statut = "Vivante" if is_female else "Vivant"
-        else:
-            statut = "Morte" if is_female else "Mort"
-    elif en_infobox or fr_infobox:
+    is_dead = (
+        bool(died_en and not re.search(r"vivant|alive", died_en, re.IGNORECASE))
+        or any("deceased" in c for c in en_cats_low)
+        or any(("décédé" in c or "mort" in c) for c in fr_cats_low)
+        or bool(re.search(r"\b(?:died at|killed at|slain|mort à|tué(?:e)? à)\b", f"{fr_intro_clean} {en_intro_clean}", re.IGNORECASE))
+    )
+    if is_dead:
+        statut = "Morte" if is_female else "Mort"
+    elif en_infobox or fr_infobox or en_cats:
         statut = "Vivante" if is_female else "Vivant"
 
-    # 6. Origine & Tribu / Nationalité (UNIQUEMENT si explicitement mentionnées — JAMAIS par défaut !)
+    # 6. Origine & Tribu / Nationalité (UNIQUEMENT si explicitement mentionnées)
     affil_fr = fr_infobox.get("affiliation", "")
     affil_en = en_infobox.get("affiliation", "")
     cult_en = en_infobox.get("culture", "") or en_infobox.get("nationality", "") or en_infobox.get("origin", "")
     orig_fr = fr_infobox.get("naissance", "") or fr_infobox.get("origine", "")
 
-    origine = orig_fr
-    tribu = translate_en_to_fr(cult_en) if cult_en else ""
+    origine = orig_fr or en_infobox.get("origin", "")
+    tribu = extra_tribu or (translate_en_to_fr(cult_en) if cult_en else "")
 
-    source_geo_text = f"{orig_fr} {cult_en} {race_fr} {race_en}".lower()
+    intro_orig_hints = " ".join(
+        m.group(1).lower()
+        for m in re.finditer(r"\b(?:from|born in|of|native of|originaire d[eu']|né(?:e)? à)\s+([a-zà-ÿ\s'-]{3,28})", f"{fr_intro_clean} {en_intro_clean}", re.IGNORECASE)
+    )
+    source_geo_text = f"{orig_fr} {cult_en} {race_raw} {intro_orig_hints} {' '.join(en_cats_low)}".lower()
     ethnic_patterns = [
         ("dal hon", "Dal Hon (Quon Tali)", "Dal Honese"),
+        ("dal-hon", "Dal Hon (Quon Tali)", "Dal Honese"),
         ("unta", "Unta (Quon Tali)", "Untan (Unta)"),
         ("falar", "Archipel de Falar", "Falari"),
+        ("korelri", "Korel", "Korelri"),
         ("kartool", "Île de Kartool", "Kartoolien"),
         ("li heng", "Li Heng (Quon Tali)", "Hengese (Li Heng)"),
         ("itko kan", "Itko Kan (Quon Tali)", "Kanese (Itko Kan)"),
@@ -451,6 +587,8 @@ def lookup_character_online(query_name, existing_characters):
         ("gral", "Sept-Cités", "Tribu Gral (Sept-Cités)"),
         ("darujhistan", "Darujhistan (Genabackis)", "Darujhistanais"),
         ("letheras", "Letheras (Lether)", "Letherii"),
+        ("malaz city", "Île de Malaz (Quon Tali)", "Malazéen (Île de Malaz)"),
+        ("malaz island", "Île de Malaz (Quon Tali)", "Malazéen (Île de Malaz)"),
         ("kurald galain", "Kurald Galain", "Tiste Andii"),
         ("kurald emurlahn", "Kurald Emurlahn", "Tiste Edur"),
     ]
@@ -462,48 +600,186 @@ def lookup_character_online(query_name, existing_characters):
                 tribu = tribu_val
             break
 
-    # 7. Faction (UNIQUEMENT les vraies factions, dont 'innommes', SANS maisons/garennes, et vide "" si non précisé)
-    affil_combined = f"{affil_fr} {affil_en} {fr_resume} {en_intro}".lower()
+    # 7. Faction (UNIQUEMENT les vraies factions, sans maisons/garennes, et vide "" si non précisé)
+    aff_all = f"{affil_fr} | {affil_en} | {' | '.join(en_cats)} | {fr_intro_clean} | {en_intro_clean}"
+    aff_low = aff_all.lower()
     faction = ""
-    if "innommé" in affil_combined or "innomé" in affil_combined or "nameless ones" in affil_combined:
+    if re.search(r"innomm[ée]|nameless ones", aff_low):
         faction = "innommes"
-    elif any(k in affil_combined for k in ["malazan empire", "empire malazéen", "14th army", "14ème armée", "bonehunters", "osseleurs", "bridgeburners", "brûleurs de ponts", "2nd army", "7th army", "ashok", "claw", "griffe"]):
+    elif re.search(r"malaz|bonehunter|osseleur|bridgeburner|brûleurs de ponts|14(?:e|ème|th)\s*arm|2(?:e|ème|nd)\s*arm|7(?:e|ème|th)\s*arm|ashok|claw|griffe|8(?:e|ème|th)\s*l[ée]gion", aff_low):
         faction = "empire"
-    elif "wickan" in affil_combined or "wickien" in affil_combined:
+    elif re.search(r"wickan|wickien", aff_low):
         faction = "wickien"
-    elif "tiste andii" in affil_combined or "moon's spawn" in affil_combined or "sangdelune" in affil_combined or "black coral" in affil_combined:
+    elif re.search(r"tiste andii|moon's spawn|sangdelune|black coral|corail noir", aff_low):
         faction = "luneNoire"
-    elif "tiste edur" in affil_combined:
+    elif "tiste edur" in aff_low:
         faction = "edur"
-    elif "darujhistan" in affil_combined:
+    elif re.search(r"darujhistan|guilde des assassins|phénix", aff_low):
         faction = "darujhistan"
-    elif "lether" in affil_combined or "patriotist" in affil_combined:
+    elif re.search(r"lether|patriotist", aff_low):
         faction = "lether"
-    elif "whirlwind" in affil_combined or "tourbillon" in affil_combined or "apocalypse" in affil_combined or "caladan brood" in affil_combined:
+    elif re.search(r"whirlwind|tourbillon|apocalypse|caladan brood|caladan rumin", aff_low):
         faction = "coalition"
-    elif "t'lan imass" in affil_combined:
+    elif "t'lan imass" in aff_low:
         faction = "t-lan-imass"
-    elif "elder god" in affil_combined or "dieu ancien" in affil_combined or "ascendant" in affil_combined:
+    elif re.search(r"elder god|dieu ancien|ascendant|panth[ée]on", aff_low):
         faction = "divin"
 
-    # 8. Grade, Armée (avec n° et surnom), Légion, Régiment/Bataillon, Escouade & Chronologie par Tome
+    # 8. Grade, Armée (n° + surnom), Légion, Régiment/Bataillon, Escouade & Chronologie DP
     dp_aff = tomes.extract_dp_affectations(vo_name, vf_name, en_title)
-    grade = fr_infobox.get("rang", "") or dp_aff.get("grade", "")
-    if not grade and en_infobox.get("rank"):
-        grade = translate_en_to_fr(en_infobox["rank"])
+
+    RANK_WEIGHTS = {
+        "Impératrice": 95, "Empereur": 95, "Roi": 95, "Reine": 95, "Seigneur": 92,
+        "Adjointe": 90, "Adjoint": 90, "Premier Glaive": 90, "Haut Poing": 90, "Grand Amiral": 90,
+        "Poing": 80, "Amiral": 80, "Grand Mage": 80, "Commandant": 75,
+        "Capitaine": 70, "Lieutenant": 60, "Sergent-Major": 55,
+        "Sergent": 50, "Sergente": 50, "Caporal": 40, "Caporale": 40,
+        "Mage d'Escouade": 30, "Soldat": 10,
+    }
+
+    def _norm_rank(r_str):
+        s = str(r_str or "").strip().lower()
+        if not s:
+            return ""
+        if re.search(r"high fist|haut[- ]poing", s): return "Haut Poing"
+        if re.search(r"adjointe|adjunct", s): return "Adjointe"
+        if re.search(r"fist|poing", s): return "Poing"
+        if re.search(r"commandant|commander", s): return "Commandant"
+        if re.search(r"capitaine|captain", s): return "Capitaine"
+        if "lieutenant" in s: return "Lieutenant"
+        if re.search(r"sergent[- ]?major", s): return "Sergent-Major"
+        if re.search(r"sergent|sergeant", s): return "Sergente" if is_female else "Sergent"
+        if re.search(r"caporal|corporal", s): return "Caporale" if is_female else "Caporal"
+        if re.search(r"soldat|soldier|marine|heavy|medium infantry|sapper|sapeur", s): return "Soldat"
+        return r_str.strip()
+
+    cand_ranks = []
+    if fr_infobox.get("rang"):
+        cand_ranks.append(_norm_rank(fr_infobox["rang"]))
+    if en_infobox.get("rank"):
+        cand_ranks.append(_norm_rank(en_infobox["rank"]))
+    if dp_aff.get("grade"):
+        cand_ranks.append(_norm_rank(dp_aff["grade"]))
+    if "high fists" in en_cats_low: cand_ranks.append("Haut Poing")
+    if "fists" in en_cats_low: cand_ranks.append("Poing")
+    if "captains" in en_cats_low: cand_ranks.append("Capitaine")
+    if "lieutenants" in en_cats_low: cand_ranks.append("Lieutenant")
+    if "sergeants" in en_cats_low: cand_ranks.append("Sergente" if is_female else "Sergent")
+    if "corporals" in en_cats_low: cand_ranks.append("Caporale" if is_female else "Caporal")
+    if any(c in en_cats_low for c in ("soldiers", "heavies", "marines", "medium infantry", "sappers")):
+        cand_ranks.append("Soldat")
+
+    for raw_i in (intro_raw_fr, intro_raw_en):
+        mp = re.search(
+            r"(?:^|[\s\n])(?:\[\[)?(Haut[- ]Poing|High Fist|Adjointe?|Adjunct|Commandant(?:e)?|Commander|Poing|Fist|Capitaine|Captain|Lieutenant|Sergent[- ]?Major|Sergente?|Sergeant|Caporale?|Corporal)(?:\]\])?\s*'''",
+            raw_i, re.IGNORECASE,
+        )
+        if mp:
+            cand_ranks.append(_norm_rank(mp.group(1)))
+
+    subj_fr = re.split(r"\b(?:in|dans|de la|du sergent|sous les ordres|under)\b", fr_intro_clean.split(".")[0], maxsplit=1, flags=re.IGNORECASE)[0]
+    subj_en = re.split(r"\b(?:in|dans|de la|du sergent|sous les ordres|under)\b", en_intro_clean.split(".")[0], maxsplit=1, flags=re.IGNORECASE)[0]
+    subj_blob = f"{subj_fr} {subj_en}".lower()
+    if re.search(r"\b(?:sergent|sergeant)\b", subj_blob):
+        cand_ranks.append("Sergente" if is_female else "Sergent")
+    elif re.search(r"\b(?:caporal|corporal)\b", subj_blob):
+        cand_ranks.append("Caporale" if is_female else "Caporal")
+    elif re.search(r"\b(?:capitaine|captain)\b", subj_blob):
+        cand_ranks.append("Capitaine")
+    elif re.search(r"\b(?:soldat|soldier|heavy|marine|medium infantry|sapper|sapeur)\b", subj_blob):
+        cand_ranks.append("Soldat")
+
+    grade = ""
+    best_w = -1
+    for rk in cand_ranks:
+        if not rk:
+            continue
+        w = RANK_WEIGHTS.get(rk, 20)
+        if w > best_w:
+            best_w = w
+            grade = rk
 
     armee = dp_aff.get("armee", "")
+    if not armee:
+        if re.search(r"14(?:e|ème|th)\s*arm[ée]e|14th\s*army|bonehunters|osseleurs", aff_low): armee = "14e Armée (Les Osseleurs)"
+        elif re.search(r"2(?:e|ème|nd)\s*arm[ée]e|2nd\s*arm[ée]?|bridgeburners|brûleurs de ponts", aff_low): armee = "2e Armée (L'Ost de Unbras)"
+        elif re.search(r"7(?:e|ème|th)\s*arm[ée]e|7th\s*army|chain of dogs|chaîne des chiens", aff_low): armee = "7e Armée (La Chaîne des Chiens)"
+        elif re.search(r"1(?:re|ère|st)\s*arm[ée]e|1st\s*army", aff_low): armee = "1re Armée (Armée de Dassem Ultor)"
+        elif re.search(r"3(?:e|ème|rd)\s*arm[ée]e|3rd\s*army", aff_low): armee = "3e Armée (Garnison de Quon Tali)"
+        elif re.search(r"5(?:e|ème|th)\s*arm[ée]e|5th\s*army", aff_low): armee = "5e Armée (L'Ost de Unbras recomposé)"
+        elif re.search(r"6(?:e|ème|th)\s*arm[ée]e|6th\s*army", aff_low): armee = "6e Armée (Genabackis / Korel)"
+        elif re.search(r"crimson guard|garde pourpre", aff_low): armee = "La Garde Pourpre"
+        elif re.search(r"grey swords|épées grises", aff_low): armee = "Compagnie des Épées Grises"
+        elif re.search(r"army of the apocalypse|armée de l'apocalypse", aff_low): armee = "Armée de l'Apocalypse (Rébellion du Tourbillon)"
+        elif re.search(r"nameless ones|innomm[ée]s", aff_low): armee = "Ordre des Innommés (Gardiens de l'Azath)"
+
     legion = dp_aff.get("legion", "")
+    if not legion:
+        m_leg = re.search(r"\b(\d+)\s*(?:e|ème|re|ère|st|nd|rd|th)?\s*l[ée]gion\b", aff_low)
+        if m_leg:
+            legion = f"{m_leg.group(1)}e Légion"
+        elif re.search(r"l[ée]gion d'aren|aren legion", aff_low):
+            legion = "Légion d'Aren"
+
     regiment = dp_aff.get("regiment", "")
+    if not regiment:
+        m_comp = re.search(r"\b(\d+)\s*(?:e|ème|re|ère|st|nd|rd|th)?\s*(?:compagnie|company)\b", aff_low)
+        if m_comp:
+            regiment = f"{m_comp.group(1)}e Compagnie"
+        elif "ashok" in aff_low:
+            regiment = "Régiment d'Ashok"
+        elif "nouveaux brûleurs" in aff_low:
+            regiment = "Nouveaux Brûleurs de Ponts"
+        elif re.search(r"brûleurs de ponts|bridgeburners", aff_low):
+            regiment = "Brûleurs de Ponts"
+        elif re.search(r"compagnie du sanglier|mott irregulars", aff_low):
+            regiment = "Compagnie du Sanglier"
+        elif re.search(r"red blades|épées rouges", aff_low):
+            regiment = "Les Épées Rouges"
+        elif re.search(r"6e lame|6th blade", aff_low):
+            regiment = "6e Lame"
+
     unite = dp_aff.get("escouade", "")
+    if not unite:
+        generic_sq_words = {"marines", "lourds", "moyens", "heavy", "heavies", "medium", "soldats", "l'escouade", "escouade", "squad", "section", "sergent", "sergeant"}
+
+        def _res_leader(rn):
+            cl = str(rn or "").strip("'’ ")
+            if not cl or cl.lower() in generic_sq_words:
+                return ""
+            return lookup_dict_insensitive(VO_TO_VF, cl) or cl
+
+        m_poss = re.search(r"\b([A-ZÀ-Ÿ][\w'’-]{2,})'s\s+(\d+)\s*(?:st|nd|rd|th)\s+squad\b", aff_all)
+        m_num = re.search(r"\b(\d+)\s*(?:e|ème|re|ère|st|nd|rd|th)?\s*(?:escouade|section|squad)\b(?:\s+de\s+marines|\s+d'infanterie)?(?:\s+(?:d[eu']\s+(?:sergent|sergeant)?\s*|d')([A-ZÀ-Ÿ][\w'’-]{2,}))?", aff_all, re.IGNORECASE)
+        if m_poss:
+            ldr = _res_leader(m_poss.group(1))
+            unite = f"{m_poss.group(2)}e Escouade ({ldr})" if ldr else f"{m_poss.group(2)}e Escouade"
+        elif m_num:
+            ldr = _res_leader(m_num.group(2)) if m_num.group(2) else ""
+            if not ldr and (grade.startswith("Sergent") or re.search(r"\b(?:leader of the|chef de la)\s+\d+", aff_low)):
+                ldr = vf_name
+            unite = f"{m_num.group(1)}e Escouade ({ldr})" if ldr else f"{m_num.group(1)}e Escouade"
+        else:
+            m_either = re.search(r"either\s+(?:sergeant\s+)?([A-Z][\w'’-]{2,})'s\s+or\s+(?:sergeant\s+)?([A-Z][\w'’-]{2,})'s\s+squad", aff_all, re.IGNORECASE)
+            if m_either:
+                l1, l2 = _res_leader(m_either.group(1)), _res_leader(m_either.group(2))
+                pair = " / ".join(x for x in (l1, l2) if x)
+                if pair:
+                    unite = f"Infanterie lourde ({pair})"
+            else:
+                m_nfr = re.search(r"(?:escouade|section)\s+(?:du\s+sergent\s+|de\s+)([A-ZÀ-Ÿ][\w'’-]{2,})", aff_all, re.IGNORECASE)
+                m_nen = re.search(r"([A-Z][\w'’-]{2,})'s\s+squad", aff_all, re.IGNORECASE)
+                ldr = _res_leader((m_nfr.group(1) if m_nfr else "") or (m_nen.group(1) if m_nen else ""))
+                if ldr:
+                    unite = f"Escouade de {ldr}"
+
     anciennes_aff = dp_aff.get("anciennesAffectations", "")
     affectations_tomes = dp_aff.get("affectationsTomes", "")
     if "innommés" in armee.lower() and not faction:
         faction = "innommes"
 
-    # Complément depuis l'infobox FR/EN si non trouvé dans les Dramatis Personae
-    aff_parts_fr = [p.strip() for p in affil_fr.split("/") if p.strip()]
-    for part in aff_parts_fr:
+    # Complément depuis l'infobox FR s'il manque encore des champs
+    for part in [p.strip() for p in affil_fr.split("/") if p.strip()]:
         pl = part.lower()
         if "ashok" in pl and "ashok" not in regiment.lower() and "ashok" not in anciennes_aff.lower():
             if not regiment:
@@ -512,71 +788,187 @@ def lookup_character_online(query_name, existing_characters):
                 anciennes_aff = (anciennes_aff + " | Régiment d'Ashok").strip(" |")
         elif "compagnie" in pl and not regiment:
             regiment = part
-        elif "escouade" in pl and not unite:
+        elif ("escouade" in pl or "section" in pl) and not unite:
             unite = part
         elif "légion" in pl and not legion:
             legion = part
 
-    # 9. Maisons / Garennes / Tuiles (nouvelle catégorie dédiée, vide "" si non précisé)
-    maisons_garennes = ""
+    # 9. Maisons / Garennes / Tuiles (Infobox + catégories "* mages" + Hautes Maisons)
+    warren_list = []
+
+    def _add_warren(w):
+        cw = str(w or "").strip()
+        if cw and not any(x.lower() == cw.lower() for x in warren_list):
+            warren_list.append(cw)
+
     warren_raw = fr_infobox.get("garenne", "") or en_infobox.get("warren", "") or en_infobox.get("holds", "")
     if warren_raw:
-        maisons_garennes = translate_en_to_fr(warren_raw)
-    house_matches = []
+        for w in re.split(r"\s*[/·,;]+\s*", warren_raw):
+            wl = w.strip().lower()
+            if re.search(r"hood'?s path|voie de go[uûô]le", wl):
+                _add_warren("Voie de Goule")
+            elif wl:
+                _add_warren(w.strip())
+
+    cat_warren_map = [
+        ("meanas", "Meanas"), ("denul", "Denul"), ("hood's path", "Voie de Goule"),
+        ("mockra", "Mockra"), ("rashan", "Rashan"), ("telas", "Telas"), ("serc", "Serc"),
+        ("thyr", "Thyr"), ("omtose phellack", "Omtose Phellack"), ("kurald galain", "Kurald Galain"),
+        ("kurald emurlahn", "Kurald Emurlahn"), ("kurald thyrllan", "Kurald Thyrllan"),
+        ("tellann", "Tellann"), ("tennes", "Tennes"), ("d'riss", "D'riss"), ("ruse", "Ruse"), ("starvald demelain", "Starvald Demelain"),
+    ]
+    for c in en_cats_low:
+        for kw, lbl in cat_warren_map:
+            if kw in c:
+                _add_warren(lbl)
+
     for kw, h_lbl in [
-        ("high house shadow", "Haute Maison Ombre"),
-        ("maison de l'ombre", "Haute Maison Ombre"),
-        ("high house chains", "Haute Maison Chaînes"),
-        ("maison des chaînes", "Haute Maison Chaînes"),
-        ("high house death", "Haute Maison Mort"),
-        ("maison de la mort", "Haute Maison Mort"),
-        ("high house dark", "Haute Maison des Ténèbres"),
-        ("high house light", "Haute Maison Lumière"),
-        ("high house war", "Haute Maison Guerre"),
-        ("high house life", "Haute Maison Vie"),
+        ("high house shadow", "Haute Maison Ombre"), ("maison de l'ombre", "Haute Maison Ombre"),
+        ("high house chains", "Haute Maison Chaînes"), ("maison des chaînes", "Haute Maison Chaînes"),
+        ("high house death", "Haute Maison Mort"), ("maison de la mort", "Haute Maison Mort"),
+        ("high house dark", "Haute Maison des Ténèbres"), ("high house light", "Haute Maison Lumière"),
+        ("high house war", "Haute Maison Guerre"), ("high house life", "Haute Maison Vie"),
     ]:
-        if kw in affil_combined and h_lbl not in house_matches:
-            house_matches.append(h_lbl)
-    if house_matches:
-        maisons_garennes = " · ".join([x for x in [maisons_garennes, ", ".join(house_matches)] if x])
+        if kw in aff_low:
+            _add_warren(h_lbl)
+    maisons_garennes = " · ".join(warren_list)
 
     # 10. Rôle / Fonction (uniquement si précisé dans les sources — sinon vide "")
     role_fr = fr_infobox.get("rôle", "") or fr_infobox.get("titre", "")
     occ_en = en_infobox.get("occupation", "")
     titles_en = en_infobox.get("titles", "")
     role_raw_en = " / ".join(x for x in [occ_en, titles_en] if x)
-    role = role_fr or (translate_en_to_fr(role_raw_en) if role_raw_en else "")
+    raw_role_inf = role_fr or (translate_en_to_fr(role_raw_en) if role_raw_en else "")
+    role_ctx = f"{raw_role_inf} {subj_blob} {' '.join(en_cats_low)}"
+    role_parts = []
+
+    def _add_role(rp):
+        if rp and not any(x.lower() == rp.lower() for x in role_parts):
+            role_parts.append(rp)
+
+    is_mage = bool(re.search(r"\bmage\b", role_ctx, re.IGNORECASE))
+    if is_mage:
+        _add_role("Mage d'escouade" if re.search(r"squad mage|mage d'escouade", f"{fr_intro_clean} {en_intro_clean}", re.IGNORECASE) else "Mage")
+    if re.search(r"\bheavy|\binfanterie lourde\b", role_ctx, re.IGNORECASE):
+        _add_role("Soldat d'infanterie lourde")
+    elif re.search(r"\bmedium infantry|\binfanterie moyenne\b", role_ctx, re.IGNORECASE):
+        _add_role("Soldat d'infanterie moyenne")
+    elif re.search(r"\bmarines?\b", role_ctx, re.IGNORECASE):
+        _add_role("Marines" if is_mage else "Marine")
+    if re.search(r"\bsapper|\bsapeur\b", role_ctx, re.IGNORECASE):
+        _add_role("Sapeur")
+    if re.search(r"\bhealer|\bguérisseur\b", role_ctx, re.IGNORECASE):
+        _add_role("Guérisseur")
+    if re.search(r"\bassassin\b", role_ctx, re.IGNORECASE):
+        _add_role("Assassin")
+    if raw_role_inf and raw_role_inf.lower() not in ("soldat", "champ") and not role_parts:
+        _add_role(raw_role_inf)
+    elif raw_role_inf.lower() == "soldat" and not role_parts:
+        _add_role("Soldat")
+    role = " / ".join(role_parts) if role_parts else (grade if grade.startswith("Sergent") else "")
 
     # 11. Résumé (priorité au texte natif du Wiki FR, sinon traduction du Wiki VO)
     resume_final = fr_resume or (translate_en_to_fr(en_intro) if en_intro else "")
 
-    # 12. Suggestions de relations avec les personnages existants
+    # 12. Suggestions STRICTES de relations (jamais d'Alliance pour simple mention d'armée !)
     suggested_relations = []
-    seen_targets = set()
-    wikitext_search_zone = f"{fr_wikitext[:3500]} {en_wikitext[:3500]}".lower()
+    seen_rel_keys = set()
+    self_aliases = {x.lower() for x in (vf_name, vo_name, fr_title, en_title, strip_accents(vf_name)) if x}
+
+    # Index de résolution exact par char_identity_keys
+    db_by_key = {}
     for p in existing_characters:
-        pid = p["id"]
-        if pid in seen_targets:
+        for k in char_identity_keys(p["id"], p.get("nom", ""), p.get("nomVO", "")):
+            db_by_key.setdefault(k, p)
+
+    def _find_db_target(page_name, disp_name):
+        tries = [
+            page_name, disp_name,
+            lookup_dict_insensitive(VO_TO_VF, page_name),
+            lookup_dict_insensitive(VF_TO_VO, page_name),
+            lookup_dict_insensitive(VO_TO_VF, disp_name),
+            lookup_dict_insensitive(VF_TO_VO, disp_name),
+        ]
+        for cand in tries:
+            if not cand:
+                continue
+            if cand.lower() in self_aliases or strip_accents(cand).lower() in self_aliases:
+                continue
+            sk = slugify(cand)
+            if sk in db_by_key:
+                tgt = db_by_key[sk]
+                if tgt.get("nom", "").lower() not in self_aliases:
+                    return tgt
+        return None
+
+    def _push_strict_rel(tgt, rtype, rlabel):
+        if not tgt:
+            return
+        k = (tgt["id"], rtype)
+        if k in seen_rel_keys:
+            return
+        seen_rel_keys.add(k)
+        suggested_relations.append({
+            "targetId": tgt["id"],
+            "targetNom": tgt["nom"],
+            "type": rtype,
+            "label": rlabel,
+        })
+
+    # Signal 1 : Champs famille explicites de l'Infobox
+    for fk, rtype, rlbl in (
+        ("spouse", "Mariage", "Conjoint(e)"),
+        ("famille", "Filiation", "Lien familial"),
+        ("relatives", "Filiation", "Lien familial"),
+        ("parents", "Filiation", "Parent"),
+        ("siblings", "Fratrie", "Frère / Sœur"),
+        ("children", "Filiation", "Enfant"),
+    ):
+        for raw_val in (fr_raw_box.get(fk, ""), en_raw_box.get(fk, "")):
+            if raw_val:
+                for page_n, disp_n in extract_wiki_links(raw_val):
+                    _push_strict_rel(_find_db_target(page_n, disp_n), rtype, f"{rlbl} ({vf_name})")
+
+    # Signal 2 : Hiérarchie directe d'escouade (liste des membres du sergent OU rattachement non ambigu)
+    for wt in (fr_wikitext, en_wikitext):
+        for ms in re.finditer(r"==+([^\n]*?(?:squad|escouade|named squad members)[^\n]*?)==+[ \t]*\n(.*?)(?=\n==|$)", wt or "", re.DOTALL | re.IGNORECASE):
+            for page_n, disp_n in extract_wiki_links(ms.group(2)):
+                _push_strict_rel(_find_db_target(page_n, disp_n), "Hiérarchie / Commandement", f"Membre de l'escouade de {vf_name}")
+
+    sq_lead_pats = [
+        r"(?:in|dans|to|à)\s+(?:la\s+\d+(?:e|ème)?\s+escouade(?:\s+de\s+marines)?\s+(?:du|de)\s+(?:sergent|sergeant)?\s*|l'escouade\s+(?:du\s+sergent|de)\s+|\[\[Sergeant\]\]\s*|Sergeant\s*)(\[\[[^\]]+\]\])(?:'s\s+(?:\d+(?:st|nd|rd|th)\s+)?squad)?",
+        r"(?:assigned to)\s+(\[\[[^\]]+\]\])'s\s+(?:\d+(?:st|nd|rd|th)\s+)?squad",
+    ]
+    for raw_i in (intro_raw_fr, intro_raw_en):
+        for pat in sq_lead_pats:
+            for ml in re.finditer(pat, raw_i, re.IGNORECASE):
+                ctx_w = raw_i[max(0, ml.start() - 25):ml.end() + 25]
+                if re.search(r"\b(?:either|likely|or|ou)\b", ctx_w, re.IGNORECASE):
+                    continue
+                for page_n, disp_n in extract_wiki_links(ml.group(1)):
+                    _push_strict_rel(_find_db_target(page_n, disp_n), "Hiérarchie / Commandement", f"Sergent de l'escouade dans laquelle sert {vf_name}")
+
+    # Signal 3 : Phrases de lien personnel explicite (2200 premiers caractères hors <ref>)
+    raw_prose_zone = f"{intro_raw_fr}\n{(en_wikitext or '')[en_box_end:en_box_end+2200]}"
+    raw_prose_zone = re.sub(r"<ref[^>]*>.*?</ref>", "", raw_prose_zone, flags=re.DOTALL | re.IGNORECASE)
+    raw_prose_zone = re.sub(r"<ref[^/>]*/\s*>", "", raw_prose_zone, flags=re.IGNORECASE)
+    bond_rules = (
+        (r"\b(?:married|husband|wife|spouse|épous[ea]?|marié(?:e)? à)\b", "Mariage", "Mariage / Conjoint(e)"),
+        (r"\b(?:younger |older |elder )?(?:brother|sister|sibling|frère|sœur|soeur)\b", "Fratrie", "Fratrie"),
+        (r"\b(?:father|mother|son of|daughter of|père|mère|fils de|fille de)\b", "Filiation", "Filiation"),
+        (r"\b(?:lover|paramour|amant|amante)\b", "Amour", "Amour"),
+        (r"\b(?:best friend|close friend|lifelong friend|meilleur(?:e)? ami(?:e)?|ami(?:e)? proche)\b", "Amitié", "Amitié proche"),
+        (r"\b(?:bodyguard|garde du corps)\b", "Protection", "Protection"),
+        (r"\b(?:sworn enemy|arch-enemy|ennemi juré|killed by|murdered by|assassinated by|tué(?:e)? par|assassiné(?:e)? par)\b", "Conflit", "Conflit / Némésis"),
+    )
+    for sent in re.split(r"(?<=[.!?])\s+|\n+", raw_prose_zone):
+        if len(sent) > 420 or "[[" not in sent:
             continue
-        vo_check = (p.get("nomVO") or "").split("/")[0].strip().lower()
-        vf_check = (p.get("nom") or "").split("/")[0].strip().lower()
-        for candidate in (vo_check, vf_check):
-            if len(candidate) >= 4 and candidate not in (vo_name.lower(), vf_name.lower()):
-                if re.search(r"\b" + re.escape(candidate) + r"\b", wikitext_search_zone):
-                    # Détecter si une relation hiérarchique existe dans la même escouade/compagnie
-                    rel_type = "Amitié" if (faction and faction == p.get("faction")) else "Alliance"
-                    if unite and unite == p.get("unite") and grade in ("Sergent", "Sergente", "Capitaine") and p.get("grade") not in ("Sergent", "Sergente", "Capitaine", "Poing", "Adjointe"):
-                        rel_type = "Hiérarchie / Commandement"
-                    suggested_relations.append({
-                        "targetId": pid,
-                        "targetNom": p["nom"],
-                        "type": rel_type,
-                        "label": f"Lié à {p['nom']} (mentionné dans le Wiki)"
-                    })
-                    seen_targets.add(pid)
-                    break
-        if len(suggested_relations) >= 8:
-            break
+        for b_re, rtype, rlbl in bond_rules:
+            if re.search(b_re, sent, re.IGNORECASE):
+                for page_n, disp_n in extract_wiki_links(sent):
+                    _push_strict_rel(_find_db_target(page_n, disp_n), rtype, f"{rlbl} ({vf_name})")
+                break
 
     detected_tomes = tomes.format_tomes(tomes.detect_tomes(vo_name, vf_name, en_title))
     if not detected_tomes and en_wikitext:
