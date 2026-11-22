@@ -327,6 +327,159 @@ def extract_wiki_links(raw_text):
     return out
 
 
+VF_EXTRA_PHRASE_MAP = {
+    "Edgewalker": "Frôlabîme",
+    "Cotillion": "Cotillon",
+    "Hood": "Goule",
+    "Stormy": "Ouragan",
+    "Sweetlard": "Saindoux",
+    "Tarr": "Malabar",
+    "Grub": "Gloyeux",
+    "Korbal Broach": "Korbal Broche",
+    "Felisin Paran": "Félisine Paran",
+    "Felisin": "Félisine",
+    "Onos T'oolan": "Onos Out'ilan",
+    "Tool": "Onos Out'ilan",
+    "Topper": "Cador",
+    "Gruntle": "Grognard",
+    "Caladan Brood": "Caladan Rumin",
+    "Clip": "Davier",
+    "Spite": "Rancœur",
+    "Curdle": "Tournée",
+    "Tugg": "Tiraille",
+    "Limp": "Boiteux",
+    "Shortnose": "Camus",
+    "Cord": "Cordon",
+    "Kindly": "Affable",
+    "Braven Tooth": "Brave Dent",
+    "Jamber Bole": "Crevard",
+    "Bole brothers": "frères Tronc",
+    "Crump": "Crevard",
+    "Shard": "Tesson",
+    "Bowl": "Bol",
+    "Borduke": "Borduc",
+    "Scant": "Piètre",
+    "Saltlick": "Lèche-Cul",
+    "Thom Tissy": "Thom Foucade",
+    "Hedge": "Esquive",
+    "Mallet": "Maillet",
+    "Trotts": "Gogues",
+    "Bottle": "Bouteille",
+    "Smiles": "Tout Sourire",
+    "Deadsmell": "Flairemort",
+    "Throatslitter": "Égorgeur",
+    "Rumjugs": "Bombasse",
+    "Rucket": "Godaille",
+    "Squint": "Bigleux",
+    "Antsy": "Bougeotte",
+    "Picker": "Piocheuse",
+    "Blend": "Mêlée",
+    "Beak": "Bec",
+    "Balm": "Baume",
+    "Truth": "Vérité",
+    "Lutes": "Luth",
+    "List": "Liste",
+    "Sorry": "Mes Regrets",
+    "Osserc": "Osseric",
+    "Osric": "Osseric",
+    "Whiskeyjack": "Mésangeai",
+    "Quick Ben": "Ben le Vif",
+    "Fiddler": "Violain",
+    "Strings": "Archet",
+    "Tattersail": "Loquevoile",
+    "Silverfox": "Renarde d'Argent",
+    "Hairlock": "Touffe",
+    "Nightchill": "Frissombre",
+    "Crone": "Mégère",
+    "Dujek One-Arm": "Dujek Unbras",
+    "Dujek Onearm": "Dujek Unbras",
+    "Feather Witch": "Plume Sorcière",
+    "Mother Dark": "Mère Ténèbre",
+    "Shadowthrone": "Ombretrône",
+    "Crippled God": "Dieu Estropié",
+    "Malaz City": "Cité de Malaz",
+    "Nameless Ones": "Innommés",
+    "Pannion Domin": "Domin de Pannion",
+    "Ashok Regiment": "Régiment d'Ashok",
+    "Mott Irregulars": "Irréguliers de Mott",
+    "Bonehunters": "Osseleurs",
+    "Bridgeburners": "Brûleurs de Ponts",
+    "Red Blades": "Épées Rouges",
+    "Crimson Guard": "Garde Pourpre",
+    "Grey Swords": "Épées Grises",
+    "Black Coral": "Corail Noir",
+    "Moon's Spawn": "Sangdelune",
+    "Seven Cities": "Sept-Cités",
+}
+
+NON_CHAR_LINK_WORDS = {
+    "gardens of the moon", "deadhouse gates", "memories of ice", "house of chains",
+    "midnight tides", "the bonehunters", "bonehunters", "reaper's gale", "toll the hounds",
+    "dust of dreams", "the crippled god", "return of the crimson guard",
+    "human", "humans", "humain", "humaine", "tiste", "tiste andii", "tiste edur", "tiste liosan",
+    "imass", "t'lan imass", "jaghut", "barghast", "white face", "trell", "eleint", "azath", "azathanai",
+    "malaz", "malazan", "malazan empire", "malazéen", "empire malazéen", "malaz city",
+    "malaz 14th army", "14th army", "14ème armée malazéenne", "8th legion", "8ème légion",
+    "ashok regiment", "régiment d'ashok", "régiment ashok", "bridgeburners", "brûleurs de ponts",
+    "heavy infantry", "heavy", "heavies", "medium infantry", "marine", "marines", "sapper",
+    "mage", "sergeant", "corporal", "captain", "commander", "fist", "high fist", "adjunct",
+    "sergent", "caporal", "capitaine", "poing", "adjointe", "elder god", "ancien dieu", "gods",
+    "high house dark", "high house war", "high house shadow", "high house death", "high house chains",
+    "kurald galain", "kurald emurlahn", "kurald thyrllan", "tellann", "omtose phellack", "meanas", "telas", "denul", "mockra",
+    "darujhistan", "lether", "letheras", "letherii", "letherii empire", "seven cities", "sept-cités",
+    "quon tali", "genabackis", "untan", "unta", "aren", "y'ghatan", "raraku", "pale", "capustan",
+    "mouse quarter", "black coral", "moon's spawn", "sangdelune", "corail noir", "drene", "hissar", "ehrlitan",
+    "liberty consign of merchants", "assassins' guild",
+    "crimson guard", "garde pourpre", "grey swords", "épées grises", "whirlwind", "tourbillon",
+    "armourer", "thief", "assassin", "priest", "shaman", "soletaken", "d'ivers", "divers", "crossbows",
+    "munitions", "deck of dragons", "jeu des dragons", "dragnipur", "unnamed characters", "bole brothers",
+    "tusked seal", "bloodwood", "refugium", "overseer of the east", "mott irregulars", "arapay",
+    "red blades", "claw", "talon", "hood's path", "obelisk", "adept", "avowed", "disavowed",
+}
+
+
+def normalize_text_to_vf(text, existing_characters=None):
+    """Normalise strictement en VF les noms VO connus dans un texte sans altérer les noms VF déjà valides."""
+    out = str(text or "")
+    if not out:
+        return ""
+    out = re.sub(r"\s*\[[A-Z][A-Za-zÀ-ÿ\s-]{2,26}\]", "", out)
+    out = re.sub(r"\s*\((?:[^)]*\ben\s+(?:VO|version\s+originale)\b[^)]*)\)", "", out, flags=re.IGNORECASE)
+
+    valid_vf_aliases = set()
+    for p in (existing_characters or []):
+        for part in str(p.get("nom", "")).split("/"):
+            pt = part.strip()
+            if not pt:
+                continue
+            valid_vf_aliases.add(pt.lower())
+            first = pt.split()[0]
+            if len(first) >= 4:
+                valid_vf_aliases.add(first.lower())
+
+    repl_map = dict(VF_EXTRA_PHRASE_MAP)
+    map_low = {k.lower() for k in repl_map}
+    for p in (existing_characters or []):
+        vf_main = str(p.get("nom", "")).split("/")[0].strip()
+        if not vf_main:
+            continue
+        for v in str(p.get("nomVO", "")).split("/"):
+            vp = v.strip()
+            vk = vp.lower()
+            if not vp or len(vk) < 4 or vk in map_low:
+                continue
+            if vk in valid_vf_aliases or vf_main.lower().startswith(vk):
+                continue
+            repl_map[vp] = vf_main
+            map_low.add(vk)
+
+    if repl_map:
+        keys = sorted(repl_map.keys(), key=len, reverse=True)
+        pat = re.compile(r"(?<![A-Za-zÀ-ÖØ-öø-ÿ0-9_-])(" + "|".join(re.escape(k) for k in keys) + r")(?![A-Za-zÀ-ÖØ-öø-ÿ0-9_-])")
+        out = pat.sub(lambda m: repl_map.get(m.group(1), m.group(1)), out)
+    return re.sub(r"\s+", " ", out).strip()
+
+
 def lookup_character_online(query_name, existing_characters):
     """
     Interroge simultanément :
@@ -980,6 +1133,55 @@ def lookup_character_online(query_name, existing_characters):
 
     portrait_url = en_thumb or fr_thumb or ""
 
+    def _vf(s):
+        return normalize_text_to_vf(s, existing_characters)
+
+    unite = _vf(unite)
+    role = _vf(role)
+    resume_final = _vf(resume_final)
+    for sr in suggested_relations:
+        sr["label"] = _vf(sr.get("label", ""))
+
+    char_cat_hints = {
+        "males", "females", "humans", "soldiers", "marines", "heavies", "sappers",
+        "medium infantry", "mages", "gods", "elder gods", "ascendants", "tiste andii",
+        "tiste edur", "tiste liosan", "barghast", "jaghut", "t'lan imass", "eleint",
+        "assassins", "priests and acolytes", "nobles", "rulers", "thieves", "pirates",
+        "captains", "sergeants", "corporals", "fists", "high fists",
+    }
+    title_chk = f"{fr_title} {en_title}"
+    is_char_page = not re.search(r"/|Dramatis|Chapitre|Chapter|Glossaire|Glossary|Category:|Catégorie:", title_chk, re.IGNORECASE) and (
+        any(fr_infobox.get(k) for k in ("nom", "race", "sexe", "affiliation"))
+        or any(en_infobox.get(k) for k in ("race", "gender", "affiliation", "occupation", "family"))
+        or any(c in char_cat_hints for c in en_cats_low)
+        or any(re.search(r"personnage|humain|dieu|mage|soldat|assassin", c) for c in fr_cats_low)
+    )
+
+    cited_missing = []
+    seen_cited = set()
+    for page_n, disp_n in extract_wiki_links(intro_raw_fr) + extract_wiki_links(intro_raw_en):
+        if len(cited_missing) >= 4:
+            break
+        rp = str(page_n or "").strip()
+        rd = str(disp_n or "").strip()
+        pl, dl = rp.lower(), rd.lower()
+        if not rp or "/" in rp or len(rp) < 3 or len(rp) > 42:
+            continue
+        if pl in self_aliases or dl in self_aliases:
+            continue
+        if pl in NON_CHAR_LINK_WORDS or dl in NON_CHAR_LINK_WORDS:
+            continue
+        if _find_db_target(rp, rd):
+            continue
+        cand_vf = lookup_dict_insensitive(VO_TO_VF, rp) or rp
+        if cand_vf.lower() in NON_CHAR_LINK_WORDS:
+            continue
+        if pl in seen_cited or cand_vf.lower() in seen_cited:
+            continue
+        seen_cited.add(pl)
+        seen_cited.add(cand_vf.lower())
+        cited_missing.append(rp)
+
     return {
         "character": {
             "id": slugify(vf_name or vo_name),
@@ -1004,6 +1206,8 @@ def lookup_character_online(query_name, existing_characters):
             "resume": resume_final
         },
         "suggestedRelations": suggested_relations,
+        "citedMissing": cited_missing,
+        "isCharacterPage": is_char_page,
         "wikiTitle": fr_title or en_title,
         "wikiUrl": (
             f"https://encyclopedie-malazeenne.fandom.com/fr/wiki/{urllib.parse.quote(fr_title.replace(' ', '_'))}"
