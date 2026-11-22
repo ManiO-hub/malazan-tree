@@ -1610,14 +1610,14 @@ def safe_js_json(obj):
 
 def sync_html_and_git_push(sync_drive=True):
     """
-    Met à jour window.INITIAL_DATA dans index.html (et Index.html) avec la base actuelle,
+    Met à jour window.INITIAL_DATA dans index.html avec la base actuelle,
     et pousse automatiquement vers GitHub Pages.
     """
     try:
         db = load_database()
         db_json = safe_js_json(db)
         trans_json = safe_js_json({"vf_to_vo": VF_TO_VO, "vo_to_vf": VO_TO_VF})
-        for fname in ("index.html", "Index.html"):
+        for fname in ("index.html",):
             fpath = os.path.join(BASE_DIR, fname)
             if os.path.exists(fpath):
                 with open(fpath, "r", encoding="utf-8") as f:
@@ -1636,7 +1636,7 @@ def sync_html_and_git_push(sync_drive=True):
                     f.write(html)
         if os.path.exists(os.path.join(BASE_DIR, ".git")):
             subprocess.Popen(
-                ["bash", "-c", "git add malazan.xlsx index.html Index.html translations.json tomes.py app.py sw.js version.json portraits && git commit -m 'Auto-sync Malazan database' && git push"],
+                ["bash", "-c", "git add malazan.xlsx index.html translations.json tomes.py app.py sw.js version.json portraits && git commit -m 'Auto-sync Malazan database' && git push"],
                 cwd=BASE_DIR, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
     except Exception as e:
@@ -1766,6 +1766,7 @@ class MalazanHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8765"))
     threading.Thread(target=background_sync_loop, daemon=True).start()
-    server = ThreadingHTTPServer(("0.0.0.0", port), MalazanHandler)
-    print(f"Serveur Malazan démarré sur http://localhost:{port} (et sur le réseau local)")
+    host = os.environ.get("HOST", "127.0.0.1")  # local uniquement par défaut (HOST=0.0.0.0 pour le réseau)
+    server = ThreadingHTTPServer((host, port), MalazanHandler)
+    print(f"Serveur Malazan démarré sur http://{host}:{port}")
     server.serve_forever()

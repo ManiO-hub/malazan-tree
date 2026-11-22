@@ -3327,6 +3327,9 @@ const facColor = f => (DATA.factions && DATA.factions[f] ? DATA.factions[f] : { 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 
+// Littéral JS sûr pour un attribut HTML onclick (gère apostrophes et guillemets)
+const jsq = v => esc(JSON.stringify(String(v ?? "")));
+
 const nodesDS = new vis.DataSet([]);
 const edgesDS = new vis.DataSet([]);
 let allNodes = [];
@@ -4017,7 +4020,7 @@ function updateActiveFilterChips() {
 
   const container = document.getElementById("activeFilterChips");
   container.innerHTML = active.map(a =>
-    `<span class="active-chip" onclick="clearSingleFilter('${esc(a.id)}')" title="Cliquer pour retirer ce filtre">${esc(a.label)} ✕</span>`
+    `<span class="active-chip" onclick="clearSingleFilter(${jsq(a.id)})" title="Cliquer pour retirer ce filtre">${esc(a.label)} ✕</span>`
   ).join("");
 }
 
@@ -4296,7 +4299,7 @@ function linkifyDescription(text, selfId, maxSpoiler) {
       if (i > plainStart) out += esc(s.slice(plainStart, i));
       const target = persoById[matched.id];
       const titleNom = target ? target.nom : matched.id;
-      out += `<a class="desc-char-link" href="#" title="Ouvrir la fiche de ${esc(titleNom)}" onclick="event.preventDefault();selectCharacter('${esc(matched.id)}')">${esc(matched.alias)}</a>`;
+      out += `<a class="desc-char-link" href="#" title="Ouvrir la fiche de ${esc(titleNom)}" onclick="event.preventDefault();selectCharacter(${jsq(matched.id)})">${esc(matched.alias)}</a>`;
       i += matched.alias.length;
       plainStart = i;
     } else {
@@ -4335,14 +4338,14 @@ function renderPanel(p) {
   const tomesHtml = tomesArr.length
     ? `<div class="tome-pills">` + tomesArr.map(n => {
         const t = TOME_BY_NUM[n];
-        return `<span class="tome-pill" title="${esc(t ? t.label : 'Tome ' + n)} (cliquer pour voir l'affectation à ce tome)" onclick="filterByTome('${esc(n)}')">${esc(t ? t.short : 'T' + n)}</span>`;
+        return `<span class="tome-pill" title="${esc(t ? t.label : 'Tome ' + n)} (cliquer pour voir l'affectation à ce tome)" onclick="filterByTome(${jsq(n)})">${esc(t ? t.short : 'T' + n)}</span>`;
       }).join("") + `</div>`
     : "—";
 
   const mgTokens = parseMaisonsGarennesTokens(p.maisonsGarennes);
   const mgHtml = mgTokens.length
     ? `<div class="tome-pills">` + mgTokens.map(tok =>
-        `<span class="warren-pill" title="Filtrer les personnages liés à ${esc(tok)}" onclick="filterByField('filterMaisonGarenne', '${esc(tok)}')">✨ ${esc(tok)}</span>`
+        `<span class="warren-pill" title="Filtrer les personnages liés à ${esc(tok)}" onclick="filterByField('filterMaisonGarenne', ${jsq(tok)})">✨ ${esc(tok)}</span>`
       ).join("") + `</div>` + (p.maisonsGarennes.includes("(") ? `<div style="font-size:11.5px;color:var(--muted);margin-top:3px">${esc(p.maisonsGarennes)}</div>` : "")
     : "—";
 
@@ -4372,15 +4375,15 @@ function renderPanel(p) {
         </div>
       </div>
       <div style="display:flex;gap:5px;align-items:center;flex-shrink:0">
-        <button onclick="openEditCharacter('${esc(p.id)}')" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:11.5px;cursor:pointer" title="Modifier ce personnage">✎</button>
+        <button onclick="openEditCharacter(${jsq(p.id)})" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:11.5px;cursor:pointer" title="Modifier ce personnage">✎</button>
         <button onclick="closePanel()" title="Fermer la fiche" style="background:var(--card);border:1px solid var(--border);color:var(--muted);padding:4px 9px;border-radius:6px;font-size:14px;cursor:pointer">✕</button>
       </div>
     </div>
 
     <div class="focus-bar">
       <span>🎯 Isoler son réseau :</span>
-      <button type="button" class="btn-focus ${isF1 ? 'active' : ''}" onclick="setFocusMode('${esc(p.id)}', 1)">1er cercle (direct)</button>
-      <button type="button" class="btn-focus ${isF2 ? 'active' : ''}" onclick="setFocusMode('${esc(p.id)}', 2)">2 degrés</button>
+      <button type="button" class="btn-focus ${isF1 ? 'active' : ''}" onclick="setFocusMode(${jsq(p.id)}, 1)">1er cercle (direct)</button>
+      <button type="button" class="btn-focus ${isF2 ? 'active' : ''}" onclick="setFocusMode(${jsq(p.id)}, 2)">2 degrés</button>
       ${(isF1 || isF2) ? `<button type="button" class="btn-focus" onclick="clearFocusMode()">Tout voir</button>` : ""}
     </div>
 
@@ -4402,16 +4405,16 @@ function renderPanel(p) {
 
     <div class="info-grid">
       <div class="lbl">Tomes :</div><div class="val">${tomesHtml}</div>
-      <div class="lbl">Grade :</div><div class="val">${p.grade ? `<span class="clickable-val" title="Filtrer ce grade" onclick="filterByField('filterGrade', '${esc(p.grade)}')">${esc(p.grade)}</span>` : "—"}</div>
-      <div class="lbl">Armée (n° & surnom) :</div><div class="val">${p.armee ? `<span class="clickable-val" title="Filtrer cette armée" onclick="filterByField('filterArmee', '${esc(p.armee)}')">${esc(p.armee)}</span>` : "—"}</div>
-      <div class="lbl">Légion :</div><div class="val">${p.legion ? `<span class="clickable-val" title="Filtrer cette légion" onclick="filterByField('filterLegion', '${esc(p.legion)}')">${esc(p.legion)}</span>` : "—"}</div>
-      <div class="lbl">Régiment / Bataillon :</div><div class="val">${p.regiment ? `<span class="clickable-val" title="Filtrer ce régiment / bataillon" onclick="filterByField('filterRegiment', '${esc(p.regiment)}')">${esc(p.regiment)}</span>` : "—"}</div>
-      <div class="lbl">Escouade / Unité :</div><div class="val">${p.unite ? `<span class="clickable-val" title="Filtrer cette escouade / unité" onclick="filterByField('filterUnite', '${esc(p.unite)}')">${esc(p.unite)}</span>` : "—"}</div>
+      <div class="lbl">Grade :</div><div class="val">${p.grade ? `<span class="clickable-val" title="Filtrer ce grade" onclick="filterByField('filterGrade', ${jsq(p.grade)})">${esc(p.grade)}</span>` : "—"}</div>
+      <div class="lbl">Armée (n° & surnom) :</div><div class="val">${p.armee ? `<span class="clickable-val" title="Filtrer cette armée" onclick="filterByField('filterArmee', ${jsq(p.armee)})">${esc(p.armee)}</span>` : "—"}</div>
+      <div class="lbl">Légion :</div><div class="val">${p.legion ? `<span class="clickable-val" title="Filtrer cette légion" onclick="filterByField('filterLegion', ${jsq(p.legion)})">${esc(p.legion)}</span>` : "—"}</div>
+      <div class="lbl">Régiment / Bataillon :</div><div class="val">${p.regiment ? `<span class="clickable-val" title="Filtrer ce régiment / bataillon" onclick="filterByField('filterRegiment', ${jsq(p.regiment)})">${esc(p.regiment)}</span>` : "—"}</div>
+      <div class="lbl">Escouade / Unité :</div><div class="val">${p.unite ? `<span class="clickable-val" title="Filtrer cette escouade / unité" onclick="filterByField('filterUnite', ${jsq(p.unite)})">${esc(p.unite)}</span>` : "—"}</div>
       <div class="lbl">Anciens régiments :</div><div class="val">${esc(p.anciennesAffectations || "—")}</div>
       <div class="lbl">Maisons / Garennes :</div><div class="val">${mgHtml}</div>
       <div class="lbl">Rôle / Fonction :</div><div class="val">${esc(p.role || "—")}</div>
-      <div class="lbl">Peuple :</div><div class="val">${p.peuple ? `<span class="clickable-val" onclick="filterByField('filterPeuple', '${esc(p.peuple)}')">${esc(p.peuple)}</span>` : "—"}</div>
-      <div class="lbl">Tribu / Nation :</div><div class="val">${p.tribu ? `<span class="clickable-val" onclick="filterByField('filterTribu', '${esc(p.tribu)}')">${esc(p.tribu)}</span>` : "—"}</div>
+      <div class="lbl">Peuple :</div><div class="val">${p.peuple ? `<span class="clickable-val" onclick="filterByField('filterPeuple', ${jsq(p.peuple)})">${esc(p.peuple)}</span>` : "—"}</div>
+      <div class="lbl">Tribu / Nation :</div><div class="val">${p.tribu ? `<span class="clickable-val" onclick="filterByField('filterTribu', ${jsq(p.tribu)})">${esc(p.tribu)}</span>` : "—"}</div>
       <div class="lbl">Origine :</div><div class="val">${esc(p.origine || "—")}</div>
     </div>
   `;
@@ -4436,7 +4439,7 @@ function renderPanel(p) {
           : `<span style="font-size:10.5px;color:#fde68a;margin-left:5px">(⬆️ Supérieur hiérarchique)</span>`;
       }
       html += `
-        <div class="rel-item" onclick="selectCharacter('${esc(otherId)}')">
+        <div class="rel-item" onclick="selectCharacter(${jsq(otherId)})">
           <div>
             <div class="rel-target">${esc(other.nom)} ${dirBadge}</div>
             <div class="rel-desc">${esc(r.label)}</div>
@@ -4508,7 +4511,7 @@ function renderCodexTab(tabName) {
           <div class="meta"><b>Composition & Escouades :</b> ${esc(a.composition)}</div>
           <div style="margin-top:4px;line-height:1.42">${esc(a.histoire)}</div>
           ${linkedChars.length ? `<div class="codex-chips">` + linkedChars.map(p =>
-            `<span class="codex-chip" onclick="jumpFromCodexToChar('${esc(p.id)}')">👤 ${esc(p.nom)}</span>`
+            `<span class="codex-chip" onclick="jumpFromCodexToChar(${jsq(p.id)})">👤 ${esc(p.nom)}</span>`
           ).join("") + `</div>` : ""}
         </div>
       `;
@@ -4525,7 +4528,7 @@ function renderCodexTab(tabName) {
           <div class="meta"><b>Figures & Sièges :</b> ${esc(h.souverains)}</div>
           <div style="margin-top:4px;line-height:1.4">${esc(h.description)}</div>
           ${linkedChars.length ? `<div class="codex-chips">` + linkedChars.map(p =>
-            `<span class="codex-chip" onclick="jumpFromCodexToChar('${esc(p.id)}')">👤 ${esc(p.nom)}</span>`
+            `<span class="codex-chip" onclick="jumpFromCodexToChar(${jsq(p.id)})">👤 ${esc(p.nom)}</span>`
           ).join("") + `</div>` : ""}
         </div>
       `;
@@ -4541,7 +4544,7 @@ function renderCodexTab(tabName) {
           <div class="meta"><b>Dépositaires & Praticiens :</b> ${esc(w.depositaire)}</div>
           <div style="margin-top:4px;line-height:1.4">${esc(w.description)}</div>
           ${linkedChars.length ? `<div class="codex-chips">` + linkedChars.map(p =>
-            `<span class="codex-chip" onclick="jumpFromCodexToChar('${esc(p.id)}')">👤 ${esc(p.nom)}</span>`
+            `<span class="codex-chip" onclick="jumpFromCodexToChar(${jsq(p.id)})">👤 ${esc(p.nom)}</span>`
           ).join("") + `</div>` : ""}
         </div>
       `;
@@ -4558,7 +4561,7 @@ function renderCodexTab(tabName) {
           <div class="meta"><b>Représentants :</b> ${esc(t.representants)}</div>
           <div style="margin-top:4px;line-height:1.4">${esc(t.description)}</div>
           ${linkedChars.length ? `<div class="codex-chips">` + linkedChars.map(p =>
-            `<span class="codex-chip" onclick="jumpFromCodexToChar('${esc(p.id)}')">👤 ${esc(p.nom)}</span>`
+            `<span class="codex-chip" onclick="jumpFromCodexToChar(${jsq(p.id)})">👤 ${esc(p.nom)}</span>`
           ).join("") + `</div>` : ""}
         </div>
       `;
