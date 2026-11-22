@@ -10,6 +10,8 @@ Sources officielles utilisées :
 
 import os
 import re
+import sys
+import logging
 import json
 import unicodedata
 import subprocess
@@ -22,6 +24,9 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from copy import copy
 import openpyxl
 import tomes
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("malazan")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 XLSX_PATH = os.path.join(BASE_DIR, "malazan.xlsx")
@@ -138,8 +143,8 @@ def load_translations():
             with open(TRANSLATIONS_PATH, "r", encoding="utf-8") as f:
                 d = json.load(f)
                 return d.get("vf_to_vo", {}), d.get("vo_to_vf", {})
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("erreur ignorée (ligne %s) : %s", sys.exc_info()[2].tb_lineno, exc)
     return {}, {}
 
 
@@ -166,8 +171,8 @@ def translate_en_to_fr(text):
             cand = res.get("responseData", {}).get("translatedText", "")
             if cand and "MYMEMORY WARNING" not in cand:
                 translated = cand
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("erreur ignorée (ligne %s) : %s", sys.exc_info()[2].tb_lineno, exc)
 
     if not translated:
         try:
@@ -522,8 +527,8 @@ def lookup_character_online(query_name, existing_characters):
                         break
             if chosen_fr:
                 fr_title, fr_wikitext, fr_thumb = _fetch_mediawiki_page(fr_api, chosen_fr)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("erreur ignorée (ligne %s) : %s", sys.exc_info()[2].tb_lineno, exc)
 
     # 2. Recherche sur le Malazan Wiki Anglophone
     if fr_wikitext:
@@ -550,8 +555,8 @@ def lookup_character_online(query_name, existing_characters):
                         en_guess = json.loads(r.read().decode("utf-8"))[0][0][0]
                         if en_guess and en_guess.lower() != lower_name:
                             en_titles = _search_mediawiki(en_api, en_guess)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log.debug("erreur ignorée (ligne %s) : %s", sys.exc_info()[2].tb_lineno, exc)
             vo_norm = strip_accents(search_vo).lower()
             chosen_en = ""
             for cand in en_titles:
@@ -567,8 +572,8 @@ def lookup_character_online(query_name, existing_characters):
                 chosen_en = en_titles[0]
             if chosen_en:
                 en_title, en_wikitext, en_thumb = _fetch_mediawiki_page(en_api, chosen_en)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("erreur ignorée (ligne %s) : %s", sys.exc_info()[2].tb_lineno, exc)
 
     # Seconde chance FR si l'article EN révèle le nom exact traduit dans VO_TO_VF
     if not fr_wikitext and en_title:
@@ -578,8 +583,8 @@ def lookup_character_online(query_name, existing_characters):
                 t, wt, th = _fetch_mediawiki_page(fr_api, vf_from_en)
                 if wt:
                     fr_title, fr_wikitext, fr_thumb = t, wt, th
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("erreur ignorée (ligne %s) : %s", sys.exc_info()[2].tb_lineno, exc)
 
     if not fr_wikitext and not en_wikitext:
         return {"error": f"Aucun article trouvé sur l'Encyclopédie Malazéenne (FR) ni sur le Malazan Wiki (VO) pour « {raw_name} »."}
@@ -1438,8 +1443,8 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
     if sync_drive:
         try:
             pull_from_drive()  # récupère d'abord les modifs faites ailleurs (APK, Google Sheet)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("erreur ignorée (ligne %s) : %s", sys.exc_info()[2].tb_lineno, exc)
     wb = openpyxl.load_workbook(XLSX_PATH)
     ws_p = wb["Personnages"]
 
@@ -1494,8 +1499,8 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
                     with open(local_abs, "wb") as f_img:
                         f_img.write(img_bytes)
                     char_data["portrait"] = local_rel
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("erreur ignorée (ligne %s) : %s", sys.exc_info()[2].tb_lineno, exc)
 
     cols = [
         cid,
