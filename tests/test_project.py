@@ -106,5 +106,114 @@ class FrontTests(unittest.TestCase):
         self.assertEqual(len(data["relations"]), len(db["relations"]))
 
 
+class SyncGuardTests(unittest.TestCase):
+    """Garde-fous de synchro, testés sur des classeurs temporaires (aucun accès au Drive)."""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self.shutil = shutil
+        self.local = os.path.join(self.tmp, "local.xlsx")
+        self.remote = os.path.join(self.tmp, "remote.xlsx")
+        shutil.copy(os.path.join(ROOT, "malazan.xlsx"), self.local)
+        shutil.copy(os.path.join(ROOT, "malazan.xlsx"), self.remote)
+
+    def tearDown(self):
+        self.shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _open(self, path):
+        import openpyxl
+        return openpyxl.load_workbook(path)
+
+    def test_validator_clean(self):
+        import checks
+        errors, warnings = checks.validate_workbook(self.local)
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
+    def test_validator_detects_duplicate_and_orphan(self):
+        import checks
+        wb = self._open(self.local)
+        ws, wr = wb["Personnages"], wb["Relation"]
+        last = max(r for r in range(2, ws.max_row + 1) if ws.cell(r, 1).value)
+        for c in range(1, 21):
+            ws.cell(last + 1, c).value = ws.cell(last, c).value  # ID en double
+        lastr = max(r for r in range(2, wr.max_row + 1) if wr.cell(r, 1).value)
+        wr.cell(lastr + 1, 1).value, wr.cell(lastr + 1, 2).value, wr.cell(lastr + 1, 3).value = "inconnu", "karsa", "Amitié"
+        wb.save(self.local)
+        errors, _ = checks.validate_workbook(self.local)
+        self.assertTrue(any("ID en double" in e for e in errors))
+        self.assertTrue(any("orpheline" in e for e in errors))
+
+    def test_merge_keeps_remote_additions(self):
+        wb = self._open(self.remote)
+        ws, wr = wb["Personnages"], wb["Relation"]
+        last = max(r for r in range(2, ws.max_row + 1) if ws.cell(r, 1).value)
+        for c in range(1, 21):
+            ws.cell(last + 1, c).value = ws.cell(last, c).value
+        ws.cell(last + 1, 1).value, ws.cell(last + 1, 2).value, ws.cell(last + 1, 3).value = "nouveau-test", "Nouveau Test", "New Test"
+        lastr = max(r for r in range(2, wr.max_row + 1) if wr.cell(r, 1).value)
+        wr.cell(lastr + 1, 1).value, wr.cell(lastr + 1, 2).value = "nouveau-test", "karsa"
+        wr.cell(lastr + 1, 3).value, wr.cell(lastr + 1, 4).value = "Amitié", "test"
+        wb.save(self.remote)
+        self.assertEqual(app._count_remote_only(self.local, self.remote), (1, 1))
+        self.assertEqual(app.merge_remote_additions(self.local, self.remote), (1, 1))
+        self.assertEqual(app._count_remote_only(self.local, self.remote), (0, 0))  # idempotent
+        import checks
+        self.assertEqual(checks.validate_workbook(self.local)[0], [])
+
+    def test_backup_rotation(self):
+        import tempfile
+        old_x, old_b = app.XLSX_PATH, app.BACKUP_DIR
+        try:
+            app.XLSX_PATH, app.BACKUP_DIR = self.local, os.path.join(self.tmp, "bk")
+            os.makedirs(app.BACKUP_DIR)
+            for i in range(14):
+                open(os.path.join(app.BACKUP_DIR, f"malazan_20200101_0000{i:02d}.xlsx"), "w").close()
+            app.backup_xlsx("test", keep=10)
+            self.assertEqual(len(os.listdir(app.BACKUP_DIR)), 10)
+        finally:
+            app.XLSX_PATH, app.BACKUP_DIR = old_x, old_b
+
+    def test_push_blocked_on_invalid_local(self):
+        wb = self._open(self.local)
+        wr = wb["Relation"]
+        lastr = max(r for r in range(2, wr.max_row + 1) if wr.cell(r, 1).value)
+        wr.cell(lastr + 1, 1).value, wr.cell(lastr + 1, 2).value, wr.cell(lastr + 1, 3).value = "x-inconnu", "karsa", "Amitié"
+        wb.save(self.local)
+        old = app.XLSX_PATH
+        try:
+            app.XLSX_PATH = self.local
+            with self.assertRaises(app.SyncGuardError):
+                app.push_to_drive()
+        finally:
+            app.XLSX_PATH = old
+
+    def test_save_preserves_verifie(self):
+        old_x, old_sync = app.XLSX_PATH, app.sync_html_and_git_push
+        old_dirty = app.DIRTY_FLAG
+        try:
+            app.XLSX_PATH = self.local
+            app.DIRTY_FLAG = os.path.join(self.tmp, ".dirty")
+            app.sync_html_and_git_push = lambda **kwargs: None
+            wb = self._open(self.local)
+            ws = wb["Personnages"]
+            first_id = str(ws.cell(2, 1).value)
+            orig_verifie = str(ws.cell(2, 21).value or "")
+            self.assertTrue(orig_verifie)
+            app.save_character_to_xlsx(
+                {"id": first_id, "nom": str(ws.cell(2, 2).value), "resume": str(ws.cell(2, 18).value)},
+                [],
+                sync_drive=False,
+            )
+            wb2 = self._open(self.local)
+            self.assertEqual(str(wb2["Personnages"].cell(2, 21).value), orig_verifie)
+        finally:
+            app.XLSX_PATH = old_x
+            app.DIRTY_FLAG = old_dirty
+            app.sync_html_and_git_push = old_sync
+
+
 if __name__ == "__main__":
     unittest.main()

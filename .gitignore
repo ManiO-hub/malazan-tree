@@ -4,3 +4,6 @@ Code.personal.gs
 .drive_dirty
 *.keystore
 *.pull.xlsx
+backups/
+sync.log
+*.remote.xlsx

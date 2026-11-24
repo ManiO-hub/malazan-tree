@@ -18,15 +18,22 @@ import subprocess
 import threading
 import time
 import hashlib
+import shutil
 import urllib.request
 import urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from copy import copy
 import openpyxl
 import tomes
+import checks
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("malazan")
+_sync_handler = logging.FileHandler(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sync.log"), encoding="utf-8")
+_sync_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%Y-%m-%d %H:%M:%S"))
+sync_log = logging.getLogger("malazan.sync")
+sync_log.addHandler(_sync_handler)
+sync_log.setLevel(logging.INFO)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 XLSX_PATH = os.path.join(BASE_DIR, "malazan.xlsx")
@@ -79,16 +86,117 @@ _last_pull = 0.0
 _last_db_hash = ""
 
 
+class SyncGuardError(RuntimeError):
+    """Synchro bloquée volontairement pour protéger la base."""
+
+
+BACKUP_DIR = os.path.join(BASE_DIR, "backups")
+
+
+def backup_xlsx(reason="", keep=10):
+    """Copie datée de malazan.xlsx avant tout écrasement ; conserve les `keep` dernières."""
+    if not os.path.exists(XLSX_PATH):
+        return ""
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    dest = os.path.join(BACKUP_DIR, time.strftime("malazan_%Y%m%d_%H%M%S.xlsx"))
+    shutil.copy2(XLSX_PATH, dest)
+    old = sorted(f for f in os.listdir(BACKUP_DIR) if f.startswith("malazan_") and f.endswith(".xlsx"))
+    for f in old[:-keep]:
+        os.remove(os.path.join(BACKUP_DIR, f))
+    sync_log.info("SAUVEGARDE %s (%s)", os.path.basename(dest), reason)
+    return dest
+
+
+def merge_remote_additions(local_path, remote_path):
+    """Ajoute au classeur local les personnages / relations présents uniquement dans la version distante
+    (ex. ajouts faits depuis l'APK) afin de ne jamais les écraser. Retourne (nb_persos, nb_relations)."""
+    wl = openpyxl.load_workbook(local_path)
+    wr = openpyxl.load_workbook(remote_path)
+    lp, rp = wl["Personnages"], wr["Personnages"]
+    lr, rr = wl["Relation"], wr["Relation"]
+    local_ids = {str(lp.cell(r, 1).value or "").strip() for r in range(2, lp.max_row + 1)} - {""}
+    last_p = max((r for r in range(2, lp.max_row + 1) if lp.cell(r, 1).value), default=1)
+    added_p = 0
+    for r in range(2, rp.max_row + 1):
+        cid = str(rp.cell(r, 1).value or "").strip()
+        if cid and cid not in local_ids:
+            last_p += 1
+            for c in range(1, rp.max_column + 1):
+                dst = lp.cell(last_p, c)
+                dst.value = rp.cell(r, c).value
+                ref = lp.cell(max(2, last_p - 1), c)
+                for attr in ("font", "fill", "border", "alignment", "number_format"):
+                    setattr(dst, attr, copy(getattr(ref, attr)))
+            local_ids.add(cid)
+            added_p += 1
+    known = {tuple(str(lr.cell(r, c).value or "").strip() for c in (1, 2, 3)) for r in range(2, lr.max_row + 1)}
+    last_r = max((r for r in range(2, lr.max_row + 1) if lr.cell(r, 1).value), default=1)
+    added_r = 0
+    for r in range(2, rr.max_row + 1):
+        key = tuple(str(rr.cell(r, c).value or "").strip() for c in (1, 2, 3))
+        if key[0] and key[1] and key not in known and key[0] in local_ids and key[1] in local_ids:
+            last_r += 1
+            for c in range(1, 5):
+                lr.cell(last_r, c).value = rr.cell(r, c).value
+            known.add(key)
+            added_r += 1
+    if added_p or added_r:
+        wl.save(local_path)
+    return added_p, added_r
+
+
 def push_to_drive(timeout=40):
-    """Envoie malazan.xlsx vers le Google Sheet (source de vérité partagée avec l'APK)."""
+    """Envoie malazan.xlsx vers le Google Sheet, après contrôle d'intégrité et fusion des ajouts distants."""
     with DRIVE_LOCK:
+        errors, warnings = checks.validate_workbook(XLSX_PATH)
+        for w in warnings[:5]:
+            sync_log.info("AVERTISSEMENT %s", w)
+        if errors:
+            sync_log.error("PUSH BLOQUÉ : %d erreur(s) d'intégrité, ex. %s", len(errors), errors[0])
+            raise SyncGuardError("Base locale invalide, envoi annulé : " + errors[0])
+
+        tmp = XLSX_PATH + ".remote.xlsx"
+        try:
+            run_gdrive_cmd(["readonly", "export", DRIVE_SHEET_ID, tmp, "--format", "xlsx"], timeout=timeout)
+            # Compter d'abord sans modifier : on sauvegarde seulement si une fusion est nécessaire
+            probe_p, probe_r = _count_remote_only(XLSX_PATH, tmp)
+            if probe_p or probe_r:
+                backup_xlsx("avant fusion des ajouts distants")
+                added_p, added_r = merge_remote_additions(XLSX_PATH, tmp)
+                sync_log.info("FUSION : +%d personnage(s), +%d relation(s) présents seulement sur le Sheet", added_p, added_r)
+        except SyncGuardError:
+            raise
+        except Exception as exc:
+            sync_log.error("PUSH ANNULÉ : impossible de comparer avec le Sheet (%s)", str(getattr(exc, "stderr", "") or exc).strip()[:150])
+            raise SyncGuardError("Comparaison avec le Sheet impossible, envoi annulé") from exc
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+
+        errors, _ = checks.validate_workbook(XLSX_PATH)
+        if errors:
+            sync_log.error("PUSH BLOQUÉ après fusion : %s", errors[0])
+            raise SyncGuardError("Base invalide après fusion : " + errors[0])
+
         run_gdrive_cmd(
             ["mutate", "update", DRIVE_SHEET_ID, XLSX_PATH, "--mime-type",
              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
             timeout=timeout,
         )
+        sync_log.info("PUSH OK (Sheet mis à jour)")
         if os.path.exists(DIRTY_FLAG):
             os.remove(DIRTY_FLAG)
+
+
+def _count_remote_only(local_path, remote_path):
+    wl = openpyxl.load_workbook(local_path, data_only=True)
+    wr = openpyxl.load_workbook(remote_path, data_only=True)
+    lids = {str(wl["Personnages"].cell(r, 1).value or "").strip() for r in range(2, wl["Personnages"].max_row + 1)} - {""}
+    rids = {str(wr["Personnages"].cell(r, 1).value or "").strip() for r in range(2, wr["Personnages"].max_row + 1)} - {""}
+    lrel = {tuple(str(wl["Relation"].cell(r, c).value or "").strip() for c in (1, 2, 3)) for r in range(2, wl["Relation"].max_row + 1)}
+    rrel = {tuple(str(wr["Relation"].cell(r, c).value or "").strip() for c in (1, 2, 3)) for r in range(2, wr["Relation"].max_row + 1)}
+    new_rel = {k for k in rrel - lrel if k[0] and k[1] and k[0] in (lids | rids) and k[1] in (lids | rids)}
+    return len(rids - lids), len(new_rel)
 
 
 def pull_from_drive(timeout=40):
@@ -107,8 +215,17 @@ def pull_from_drive(timeout=40):
         wb = openpyxl.load_workbook(tmp)  # validation : le fichier doit être un classeur lisible complet
         if "Personnages" not in wb.sheetnames or "Relation" not in wb.sheetnames:
             os.remove(tmp)
+            sync_log.error("PULL REFUSÉ : classeur exporté incomplet")
             raise RuntimeError("Classeur exporté incomplet")
+        errors, warnings = checks.validate_workbook(tmp, check_portraits=False)
+        for e in errors[:5]:
+            sync_log.warning("PULL : le Sheet contient une erreur d'intégrité : %s", e)
+        for w in warnings[:5]:
+            sync_log.info("PULL avertissement : %s", w)
+        if os.path.getsize(XLSX_PATH) and open(tmp, "rb").read() != open(XLSX_PATH, "rb").read():
+            backup_xlsx("avant remplacement par le Sheet")
         os.replace(tmp, XLSX_PATH)
+        sync_log.info("PULL OK (%d erreur(s), %d avertissement(s))", len(errors), len(warnings))
         _last_pull = time.time()
         return True
 
@@ -133,7 +250,7 @@ def background_sync_loop(interval=240):
                 _last_db_hash = h
             first = False
         except Exception as e:
-            print("[sync] Échec de la synchro Drive :", str(getattr(e, "stderr", "") or e).strip()[:200])
+            sync_log.error("Échec de la synchro Drive : %s", str(getattr(e, "stderr", "") or e).strip()[:200])
         time.sleep(interval)
 
 
@@ -1367,6 +1484,7 @@ def load_database():
                 "resume": str(ws_p.cell(r, 18).value or "").strip(),
                 "tomes": str(ws_p.cell(r, 19).value or "").strip(),
                 "portrait": str(ws_p.cell(r, 20).value or "").strip(),
+                "verifie": str(ws_p.cell(r, 21).value or "").strip(),
             })
         else:
             personnages.append({
@@ -1502,6 +1620,10 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
         except Exception as exc:
             log.debug("erreur ignorée (ligne %s) : %s", sys.exc_info()[2].tb_lineno, exc)
 
+    existing_verifie = str(ws_p.cell(target_row, 21).value or "").strip() if target_row <= last_filled_row else ""
+    if not str(char_data.get("verifie") or "").strip() and existing_verifie:
+        char_data["verifie"] = existing_verifie
+
     cols = [
         cid,
         char_data.get("nom", ""),
@@ -1523,6 +1645,7 @@ def save_character_to_xlsx(char_data, new_relations, sync_drive=True):
         char_data.get("resume", ""),
         char_data.get("tomes", ""),
         char_data.get("portrait", ""),
+        char_data.get("verifie", ""),
     ]
     for c_idx, val in enumerate(cols, 1):
         cell = ws_p.cell(target_row, c_idx)

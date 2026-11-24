@@ -191,7 +191,7 @@ function getDatabase() {
       faction: fac, grade: str_(r[7]), armee: str_(r[8]), legion: str_(r[9]), regiment: str_(r[10]),
       unite: str_(r[11]), anciennesAffectations: str_(r[12]), affectationsTomes: str_(r[13]),
       maisonsGarennes: str_(r[14]), role: str_(r[15]), statut: str_(r[16]), resume: str_(r[17]),
-      tomes: str_(r[18]), portrait: str_(r[19])
+      tomes: str_(r[18]), portrait: str_(r[19]), verifie: str_(r[20])
     });
   }
 
@@ -300,11 +300,14 @@ function saveCharacterUnlocked_(payload) {
     charData.legion || "", charData.regiment || "", charData.unite || "",
     charData.anciennesAffectations || "", charData.affectationsTomes || "",
     charData.maisonsGarennes || "", charData.role || "", charData.statut || "",
-    charData.resume || "", charData.tomes || "", charData.portrait || ""
+    charData.resume || "", charData.tomes || "", charData.portrait || "", charData.verifie || ""
   ].map(function (x) { return x === null || x === undefined ? "" : String(x); });
 
+  if (targetRow > 0 && targetRow <= pv.length && !str_(rowValues[20])) {
+    rowValues[20] = str_(pv[targetRow - 1][20]);
+  }
   if (isMergedDuplicate && aliasIdx >= 0) {
-    for (let c = 1; c < 20; c++) {
+    for (let c = 1; c < 21; c++) {
       const existingVal = str_(pv[aliasIdx][c]);
       if (c === 19 && existingVal.indexOf("portraits/") === 0 && (!rowValues[19] || rowValues[19].indexOf("http") === 0)) {
         rowValues[19] = existingVal;
@@ -317,10 +320,10 @@ function saveCharacterUnlocked_(payload) {
   if (targetRow < 0) {
     targetRow = Math.max(wsP.getLastRow(), 1) + 1;
     if (targetRow > 2) {
-      wsP.getRange(targetRow - 1, 1, 1, 20).copyTo(wsP.getRange(targetRow, 1, 1, 20), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+      wsP.getRange(targetRow - 1, 1, 1, 21).copyTo(wsP.getRange(targetRow, 1, 1, 21), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
     }
   }
-  const rng = wsP.getRange(targetRow, 1, 1, 20);
+  const rng = wsP.getRange(targetRow, 1, 1, 21);
   rng.setNumberFormat("@");
   rng.setValues([rowValues]);
 
