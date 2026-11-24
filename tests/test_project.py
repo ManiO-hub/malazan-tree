@@ -79,9 +79,22 @@ class FrontTests(unittest.TestCase):
     def setUpClass(cls):
         with open(os.path.join(ROOT, "index.html"), encoding="utf-8") as f:
             cls.html = f.read()
-        cls.js = max(re.findall(r"<script>(.*?)</script>", cls.html, re.S), key=len)
+        with open(os.path.join(ROOT, "style.css"), encoding="utf-8") as f:
+            cls.css = f.read()
+        with open(os.path.join(ROOT, "data.js"), encoding="utf-8") as f:
+            cls.data_js = f.read()
+        with open(os.path.join(ROOT, "app.js"), encoding="utf-8") as f:
+            cls.js = f.read()
+
+    def test_split_assets_linked(self):
+        self.assertIn('href="style.css"', self.html)
+        self.assertIn('src="data.js"', self.html)
+        self.assertIn('src="app.js"', self.html)
+        self.assertNotIn("<style>", self.html)
+        self.assertTrue(len(self.css.strip()) > 100)
 
     def test_js_syntax(self):
+        quickjs.Context().eval("const window = {};\n" + self.data_js)
         quickjs.Context().eval("function _(){" + self.js + "\n}")
 
     def test_inline_onclick_literals_are_safe(self):
@@ -96,14 +109,153 @@ class FrontTests(unittest.TestCase):
             self.assertEqual(ctx.eval(htmllib.unescape(attr)), v)
 
     def test_no_unsafe_onclick_pattern(self):
-        self.assertIsNone(re.search(r"onclick=\"[^\"]*'\$\{esc\(", self.html))
+        self.assertIsNone(re.search(r"onclick=\"[^\"]*'\$\{esc\(", self.html + self.js))
 
     def test_embedded_data_matches_excel(self):
-        m = re.search(r"window\.INITIAL_DATA\s*=\s*(\{.*?\});\s*\nconst IS_GAS", self.html, re.S)
+        m = re.search(r"window\.INITIAL_DATA\s*=\s*(\{.*\});", self.data_js, re.S)
         data = json.loads(m.group(1))
         db = app.load_database()
         self.assertEqual(len(data["personnages"]), len(db["personnages"]))
         self.assertEqual(len(data["relations"]), len(db["relations"]))
+
+    def test_accent_insensitive_search_and_codex(self):
+        ctx = quickjs.Context()
+        ctx.eval("const window = {};\n" + self.data_js + "\nconst DATA = window.INITIAL_DATA;")
+        m_strip = re.search(r"function stripAccents\b.*?\n\}", self.js, re.S)
+        m_match = re.search(r"function findMatchingCharacters\b.*?\n\}", self.js, re.S)
+        ctx.eval(m_strip.group(0) + "\n" + m_match.group(0))
+        ctx.eval("""
+            DATA.personnages.forEach(p => {
+                p._searchHay = stripAccents(
+                    `${p.nom} ${p.nomVO} ${p.tribu} ${p.peuple} ${p.resume}`.toLowerCase()
+                );
+            });
+            function searchIds(q) {
+                const norm = stripAccents(q.toLowerCase());
+                return DATA.personnages.filter(p => p._searchHay.includes(norm)).map(p => p.id);
+            }
+            function codexIds(txt) {
+                return findMatchingCharacters(txt).map(p => p.id);
+            }
+        """)
+        self.assertIn("edgewalker", json.loads(ctx.eval('JSON.stringify(searchIds("frolabime"))')))
+        self.assertIn("felisin-paran", json.loads(ctx.eval('JSON.stringify(searchIds("felisine"))')))
+        self.assertIn("throatslitter", json.loads(ctx.eval('JSON.stringify(searchIds("egorgeur"))')))
+        self.assertIn("felisin-paran", json.loads(ctx.eval('JSON.stringify(codexIds("Felisine Paran et Egorgeur"))')))
+        self.assertIn("throatslitter", json.loads(ctx.eval('JSON.stringify(codexIds("Felisine Paran et Egorgeur"))')))
+
+    def test_antispoiler_and_future_mentions(self):
+        ctx = quickjs.Context()
+        ctx.eval("const window = {};\n" + self.data_js + "\nconst DATA = window.INITIAL_DATA;")
+        m_strip = re.search(r"function stripAccents\b.*?\n\}", self.js, re.S)
+        m_fut = re.search(r"function hasFutureTomeMention\b.*?\n\}", self.js, re.S)
+        m_mask = re.search(r"function maskFutureRangeEnd\b.*?\n\}", self.js, re.S)
+        m_res = re.search(r"function resolveAffectationAtTome\b.*?\n\}", self.js, re.S)
+        ctx.eval("\n".join([m_strip.group(0), m_fut.group(0), m_mask.group(0), m_res.group(0)]))
+        self.assertTrue(ctx.eval('hasFutureTomeMention("Sergente (T6–T10)", "3")'))
+        self.assertTrue(ctx.eval('hasFutureTomeMention("Garnison d\'Aren (Tome 4)", "2")'))
+        self.assertFalse(ctx.eval('hasFutureTomeMention("Capitaine (T1–T3)", "1")'))
+        fel_t1 = json.loads(ctx.eval('JSON.stringify(resolveAffectationAtTome(DATA.personnages.find(p => p.id === "felisin-paran"), "1"))'))
+        self.assertNotIn("Sha'ik", fel_t1["currentText"])
+        self.assertFalse(any("Coupe-Crâne" in x for x in fel_t1["previousList"]))
+        self.assertFalse(any("Coupe-Crâne" in x for x in fel_t1["safePrevItems"]))
+        bot_t1 = json.loads(ctx.eval('JSON.stringify(resolveAffectationAtTome(DATA.personnages.find(p => p.id === "bottle"), "1"))'))
+        self.assertIn("Aucune affectation connue au Tome 1", bot_t1["currentText"])
+
+    def test_layout_cache_reuses_positions(self):
+        ctx = quickjs.Context()
+        m_slug = re.search(r"^function slugifyId\b.*?^\}", self.js, re.S | re.M)
+        m_unit = re.search(r"^function getSubUnitSpec\b.*?^\}", self.js, re.S | re.M)
+        m_rank = re.search(r"^function getRankScore\b.*?^\}", self.js, re.S | re.M)
+        m_layout = re.search(r"^let layoutMode = .*?^function drawRoundedPill", self.js, re.S | re.M)
+        harness = """
+            const DATA = { factions: { empire: { label: "Empire", color: "#C0392B" } }, relations: [] };
+            const persoById = {
+                a: { id: "a", nom: "Alpha", faction: "empire", armee: "14e", unite: "U1", grade: "Sergent" },
+                b: { id: "b", nom: "Beta", faction: "empire", armee: "14e", unite: "U1", grade: "Soldat" }
+            };
+            const GOD_ACQUAINTANCE_ANCHORS = {};
+        """
+        layout_snippet = m_layout.group(0).rsplit("function drawRoundedPill", 1)[0]
+        ctx.eval(harness + "\n" + m_slug.group(0) + "\n" + m_rank.group(0) + "\n" + m_unit.group(0) + "\n" + layout_snippet)
+        res = json.loads(ctx.eval("""
+            JSON.stringify((() => {
+                const n1 = [{ id: "b", info: persoById.b }, { id: "a", info: persoById.a }];
+                computeCampAndIslandLayout(n1);
+                const firstX = n1.find(n => n.id === "a").x;
+                const n2 = [{ id: "a", info: persoById.a }, { id: "b", info: persoById.b }];
+                n2[0].x = -99999;
+                computeCampAndIslandLayout(n2);
+                return { firstX, cachedX: n2[0].x, cacheSize: _layoutCache.size, terrCount: renderedTerritories.length };
+            })())
+        """))
+        self.assertEqual(res["cacheSize"], 1)
+        self.assertEqual(res["firstX"], res["cachedX"])
+        self.assertEqual(res["terrCount"], 1)
+
+
+class WikiLookupTests(unittest.TestCase):
+    def test_extract_balanced_infobox_and_links(self):
+        import wiki_lookup
+        wt = "{{Infobox Personnage\n|nom=Félisine {{Note|x}}\n|race=Humaine\n}}\nTexte avec [[Ben le Vif|Quick]]."
+        clean_box, raw_box, end = wiki_lookup.extract_balanced_infobox(wt)
+        self.assertEqual(clean_box["nom"], "Félisine")
+        self.assertEqual(clean_box["race"], "Humaine")
+        self.assertGreater(end, 0)
+        self.assertEqual(wiki_lookup.extract_wiki_links(wt[end:]), [("Ben le Vif", "Quick")])
+
+    def test_detect_gender_peuple_and_statut(self):
+        import wiki_lookup
+        is_f, peuple, extra, _ = wiki_lookup.detect_gender_and_peuple(
+            {"sexe": "Femme", "race": "Humain (Korelri)"}, {}, ["humans", "females"], "", ""
+        )
+        self.assertTrue(is_f)
+        self.assertEqual(peuple, "Humaine")
+        self.assertEqual(extra, "Korelri")
+        self.assertEqual(wiki_lookup.detect_statut({}, {"died": "Seven Cities"}, [], [], "", "", is_f), "Morte")
+        self.assertEqual(wiki_lookup.detect_statut({"nom": "X"}, {}, [], [], "", "", False), "Vivant")
+        self.assertEqual(wiki_lookup.detect_statut({}, {}, [], [], "", "", False), "")
+
+    def test_detect_origine_tribu_warrens_role(self):
+        import wiki_lookup
+        orig, tribu = wiki_lookup.detect_origine_and_tribu(
+            {}, {"culture": "Wickan"}, ["wickans"], "", "", "", "", translate_fn=lambda s: s
+        )
+        self.assertEqual(orig, "Plaines Wickiennes")
+        self.assertEqual(tribu, "Wickan")
+        mg, role = wiki_lookup.detect_warrens_and_role(
+            {"garenne": "Hood's Path"}, {"occupation": "Mage"}, ["marines", "sappers"],
+            "high house shadow", "squad mage", "", "She is a squad mage.", "Sergente", translate_fn=lambda s: s
+        )
+        self.assertIn("Voie de Goule", mg)
+        self.assertIn("Haute Maison Ombre", mg)
+        self.assertIn("Mage", role)
+        self.assertIn("Sapeur", role)
+
+    def test_extract_strict_relations_and_cited_missing(self):
+        import wiki_lookup
+        existing = [{"id": "paran", "nom": "Ganoes Paran", "nomVO": "Ganoes Paran"}]
+        find_tgt = wiki_lookup.build_db_lookup_helper(existing, {"félisine paran", "felisin paran"})
+        rels = wiki_lookup.extract_strict_relations(
+            "Félisine Paran",
+            "{{Infobox\n|famille=[[Ganoes Paran]]\n}}\nSon frère [[Ganoes Paran]] et dans l'escouade de [[Violain]].",
+            "",
+            {"famille": "[[Ganoes Paran]]"},
+            {},
+            "Elle voit [[Ganoes Paran]], [[Nouveau Perso]] et [[Human]].",
+            "",
+            0,
+            find_tgt,
+        )
+        self.assertEqual(rels[0]["targetId"], "paran")
+        self.assertEqual(rels[0]["type"], "Filiation")
+        missing = wiki_lookup.extract_cited_missing(
+            "Elle croise [[Ganoes Paran]], [[Nouveau Perso]] et [[Human]].",
+            "",
+            {"félisine paran"},
+            find_tgt,
+        )
+        self.assertEqual(missing, ["Nouveau Perso"])
 
 
 class SyncGuardTests(unittest.TestCase):

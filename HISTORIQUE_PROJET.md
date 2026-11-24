@@ -58,14 +58,16 @@ Ce document résume l'ensemble des décisions, des sources de référence, de l'
 
 ## 3. Architecture des fichiers du dossier
 
-- `app.py` : Serveur HTTP local (`127.0.0.1:8765` par défaut ; `HOST=0.0.0.0` pour le réseau), API `/api/data`, `/api/lookup`, `/api/add`, `/api/pull-drive` et synchro Drive + GitHub.
-- `index.html` (le doublon `Index.html` a été supprimé) : Interface complète (graphe, filtres, affectation à l'instant T, Codex Armées/Maisons/Garennes/Sources, modal Wiki).
-- `malazan.xlsx` : Classeur Excel de référence à 6 onglets (`Personnages`, `Relation`, `Factions`, `Maisons & Garennes`, `Armées & Unités`, `Légende`) synchronisé avec Google Sheets.
+- `app.py` : Serveur HTTP local (`127.0.0.1:8765` par défaut ; `HOST=0.0.0.0` pour le réseau), routes statiques + API `/api/data`, `/api/lookup`, `/api/add`, `/api/pull-drive`, garde-fous de synchro Drive + backups rotatifs (`backups/`), et republication de `data.js`.
+- `wiki_lookup.py` : Module dédié à l'interrogation bilingue des wikis (FR + VO), normalisation stricte en VF et sous-fonctions testables (`fetch_bilingual_wiki_pages`, `detect_gender_and_peuple`, `detect_statut`, `detect_origine_and_tribu`, `detect_military_and_faction`, `detect_warrens_and_role`, `extract_strict_relations`, `extract_cited_missing`).
+- `checks.py` : Validateur de cohérence du classeur `malazan.xlsx` (doublons, orphelins, champs obligatoires, 100 % VF, portraits existants).
+- `index.html`, `style.css`, `data.js`, `app.js` : Interface découpée (HTML léger, CSS extrait, données embarquées `window.INITIAL_DATA` compatibles `file:///android_asset/` dans `data.js`, logique graphe & UI dans `app.js`).
+- `malazan.xlsx` : Classeur Excel de référence à 6 onglets (`Personnages` à 21 colonnes incluant `Vérifié (source, date)`, `Relation`, `Factions`, `Maisons & Garennes`, `Armées & Unités`, `Légende`) synchronisé avec Google Sheets.
 - `tomes.py`, `dp_cache.json`, `translations.json` : Détection des tomes, extraction des affectations par tome via les *Dramatis Personae*, et table des ~1 460 correspondances VF ↔ VO.
-- `manifest.json`, `sw.js`, `icon.svg`, `icon-192.png`, `icon-512.png` : Ressources PWA & icônes.
-- `.github/workflows/build-apk.yml` : Pipeline CI/CD compilant `malazan-tree.apk` (coque Android native, signée avec une clé **persistante** stockée dans les secrets GitHub `ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASS` ; sauvegarde locale : `~/.malazan-signing/`). Déclenché uniquement quand `version.json`, l'icône ou le workflow changent.
+- `manifest.json`, `sw.js`, `icon.svg`, `icon-192.png`, `icon-512.png` : Ressources PWA & icônes (`sw.js` met en cache Cache-First les portraits et Network-First l'application & `data.js`).
+- `.github/workflows/build-apk.yml` & `.github/workflows/tests.yml` : Pipeline APK Android (Java 17 `setup-java@v5`, embarquant `index.html`, `style.css`, `data.js`, `app.js`, `sw.js`, `portraits/`) et CI Python/QuickJS/Ruff.
 - `version.json` : version de la coque native (`apkVersionCode`). Incrémenter pour publier un nouvel APK ; l'appli prévient l'utilisateur dans l'APK (bouton « Télécharger »).
-- `Code.gs` : passerelle **Google Apps Script** (lecture/écriture du Google Sheet depuis l'APK/PWA). `Code.personal.gs` (ignoré par Git) = copie avec le jeton secret `SYNC_TOKEN`.
+- `Code.gs` : passerelle **Google Apps Script** (lecture/écriture des 21 colonnes du Google Sheet depuis l'APK/PWA). `Code.personal.gs` (ignoré par Git) = copie avec le jeton secret `SYNC_TOKEN`.
 
 ## 4. Synchronisation en ligne (v13)
 
@@ -83,4 +85,9 @@ Ce document résume l'ensemble des décisions, des sources de référence, de l'
 - **Liens cliquables dans les descriptions** (`linkifyDescription`, respecte l'anti-spoiler) ; **normalisation VF + intégration auto des personnages cités** lors des recherches (`normalizeTextToVF` / `normalize_text_to_vf`).
 - **Correctifs qualité** : `onclick` sûrs via `jsq()` (apostrophes + XSS), serveur lié à `127.0.0.1`, doublon `Index.html` supprimé, erreurs silencieuses remplacées par du `logging`, suite `tests/` + CI `.github/workflows/tests.yml`.
 - **Tests** : `python3 -m unittest discover tests` (intégrité de la base, absence de noms VO, normalisation, sécurité des onclick, cohérence HTML/Excel).
-- **Reste à faire (idées)** : découper `lookup_character_online`, mutualiser la logique JS/Python, séparer CSS/JS/JSON (attention : l'APK embarque uniquement `index.html`, il faudrait adapter `build-apk.yml`).
+
+## 6. Phases 1 à 4 — Garde-fous, Modularisation, Anti-Spoiler & Offline
+
+- **Phase 1 (Finalisée)** : 21e colonne `Vérifié (source, date)` préservée dans `save_character_to_xlsx` et `Code.gs`, backups rotatifs (`backups/`), `checks.py`, fusion anti-écrasement Drive et `sw.js` `v19`.
+- **Phase 2 (Modularisation & CI)** : Extraction de `wiki_lookup.py` avec sous-fonctions unitaires testées ; découpage complet de `index.html` vers `style.css` + `data.js` + `app.js` ; ajout de `ruff` dans `.github/workflows/tests.yml` et `setup-java@v5` + copie des assets dans `.github/workflows/build-apk.yml`.
+- **Phases 3 & 4 (UX, Anti-Spoiler & Performance)** : Recherche principale et Codex insensibles aux accents (`frolabime`, `felisine`, `egorgeur`) ; mode Anti-Spoiler renforcé sur les affectations, anciens régiments et libellés de relations (`hasFutureTomeMention`) ; cache `_layoutCache` pour `computeCampAndIslandLayout` ; cache hors-ligne des portraits en Cache-First dans `sw.js` (`malazan-tree-v20`).
